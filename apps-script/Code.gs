@@ -11,7 +11,8 @@ const CONFIG = {
   BRAND_COLUMN: 4,
   PRODUCT_TYPE_COLUMN: 5,
   FLAVOUR_COLUMN: 5,
-  BACKSTOCK_COLUMN: 7,
+  BACKSTOCK_COLUMN: 6,
+  SHELF_STOCK_COLUMN: 7,
   TOTAL_QTY_COLUMN: 8,
   LAST_USER_COLUMN: 9,
   LAST_SCAN_COLUMN: 10,
@@ -19,6 +20,7 @@ const CONFIG = {
   // If matching headers exist in row 1, they override the fallback indexes above.
   BARCODE_HEADERS: ['barcode', 'bar code', 'sku', 'product code'],
   BACKSTOCK_HEADERS: ['backstock', 'back stock', 'backstock qty', 'back stock qty'],
+  SHELF_HEADERS: ['shelf stock', 'shelf', 'shelf qty', 'shop floor', 'floor stock'],
   TOTAL_QTY_HEADERS: ['total qty', 'total quantity', 'total stock', 'qty', 'quantity'],
 
   USERNAME_HEADERS: ['username', 'user', 'staff', 'staff name', 'name'],
@@ -151,7 +153,7 @@ function recordScan(payload) {
     const update = performStockUpdate(sheet, row, target, quantity, columns, session);
     const product = getProductFromRow(sheet, row);
 
-    const message = (target === 'backstock' ? 'Backstock' : 'Total Qty') + ' updated.';
+    const message = (target === 'backstock' ? 'Backstock' : 'Shelf stock') + ' updated.';
     logScan(session, barcode, target, quantity, true, message);
     return {
       ok: true,
@@ -279,6 +281,7 @@ function getStockColumns(sheet) {
     barcode: findHeader(headers, CONFIG.BARCODE_HEADERS, CONFIG.BARCODE_COLUMN),
     sku: CONFIG.SKU_COLUMN,
     backstock: findHeader(headers, CONFIG.BACKSTOCK_HEADERS, CONFIG.BACKSTOCK_COLUMN),
+    shelf: findHeader(headers, CONFIG.SHELF_HEADERS, CONFIG.SHELF_STOCK_COLUMN),
     totalQty: findHeader(headers, CONFIG.TOTAL_QTY_HEADERS, CONFIG.TOTAL_QTY_COLUMN),
     lastUser: CONFIG.LAST_USER_COLUMN,
     lastScan: CONFIG.LAST_SCAN_COLUMN
@@ -307,18 +310,20 @@ function findValueRow(sheet, column, value) {
 
 function performStockUpdate(sheet, row, target, quantity, columns, session) {
   const currentBackstock = Number(sheet.getRange(row, columns.backstock).getValue()) || 0;
-  const currentTotalQty = Number(sheet.getRange(row, columns.totalQty).getValue()) || 0;
+  const currentShelf = Number(sheet.getRange(row, columns.shelf).getValue()) || 0;
   const lastUser = session.displayName || session.username || '';
   let nextBackstock = currentBackstock;
-  let nextTotalQty = currentTotalQty;
+  let nextShelf = currentShelf;
 
   if (target === 'backstock') {
     nextBackstock = nextStockValue(currentBackstock, quantity);
   } else {
-    nextTotalQty = nextStockValue(currentTotalQty, quantity);
+    nextShelf = nextStockValue(currentShelf, quantity);
   }
+  const nextTotalQty = nextBackstock + nextShelf;
 
   sheet.getRange(row, columns.backstock).setValue(nextBackstock);
+  sheet.getRange(row, columns.shelf).setValue(nextShelf);
   sheet.getRange(row, columns.totalQty).setValue(nextTotalQty);
   sheet.getRange(row, columns.lastUser).setValue(lastUser);
   sheet.getRange(row, columns.lastScan).setValue(new Date());
@@ -328,9 +333,9 @@ function performStockUpdate(sheet, row, target, quantity, columns, session) {
     mode: target,
     qty: quantity,
     previousBackstock: currentBackstock,
-    previousTotalQty: currentTotalQty,
+    previousShelfStock: currentShelf,
     backstock: nextBackstock,
-    shelfStock: nextTotalQty,
+    shelfStock: nextShelf,
     totalQty: nextTotalQty,
     lastUser: lastUser
   };
@@ -345,6 +350,7 @@ function nextStockValue(currentValue, quantity) {
 function getProductFromRow(sheet, row) {
   const data = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), CONFIG.LAST_SCAN_COLUMN)).getValues()[0];
   const backstock = Number(data[CONFIG.BACKSTOCK_COLUMN - 1]) || 0;
+  const shelfStock = Number(data[CONFIG.SHELF_STOCK_COLUMN - 1]) || 0;
   const totalQty = Number(data[CONFIG.TOTAL_QTY_COLUMN - 1]) || 0;
   return {
     row: row,
@@ -355,7 +361,7 @@ function getProductFromRow(sheet, row) {
     productType: clean(data[CONFIG.PRODUCT_TYPE_COLUMN - 1]),
     flavour: clean(data[CONFIG.FLAVOUR_COLUMN - 1]),
     backstock: backstock,
-    shelfStock: totalQty,
+    shelfStock: shelfStock,
     totalQty: totalQty,
     lastUser: clean(data[CONFIG.LAST_USER_COLUMN - 1]),
     lastScan: dateToIso(data[CONFIG.LAST_SCAN_COLUMN - 1])
@@ -381,6 +387,7 @@ function getAllProducts() {
 
 function getProductFromValues(data, row) {
   const backstock = Number(data[CONFIG.BACKSTOCK_COLUMN - 1]) || 0;
+  const shelfStock = Number(data[CONFIG.SHELF_STOCK_COLUMN - 1]) || 0;
   const totalQty = Number(data[CONFIG.TOTAL_QTY_COLUMN - 1]) || 0;
   return {
     row: row,
@@ -391,7 +398,7 @@ function getProductFromValues(data, row) {
     productType: clean(data[CONFIG.PRODUCT_TYPE_COLUMN - 1]),
     flavour: clean(data[CONFIG.FLAVOUR_COLUMN - 1]),
     backstock: backstock,
-    shelfStock: totalQty,
+    shelfStock: shelfStock,
     totalQty: totalQty,
     lastUser: clean(data[CONFIG.LAST_USER_COLUMN - 1]),
     lastScan: dateToIso(data[CONFIG.LAST_SCAN_COLUMN - 1])
@@ -480,7 +487,7 @@ function updateByRowLegacy(payload) {
     const columns = getStockColumns(sheet);
     const update = performStockUpdate(sheet, row, target, quantity, columns, session);
     const product = getProductFromRow(sheet, row);
-    const message = (target === 'backstock' ? 'Backstock' : 'Total Qty') + ' updated.';
+    const message = (target === 'backstock' ? 'Backstock' : 'Shelf stock') + ' updated.';
     logScan(session, product.barcode, target, quantity, true, message);
     return { ok: true, success: true, message: message, product: product, update: update };
   } finally {

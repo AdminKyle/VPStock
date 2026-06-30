@@ -58,7 +58,7 @@ export function setStatus(message, type = "neutral") {
 export function updateRecent({ barcode, target }) {
   if (barcode) els.lastBarcode.textContent = barcode;
   if (target) {
-    const label = target === "shelf" ? "Total Qty" : "Backstock";
+    const label = target === "shelf" ? "Shelf stock" : "Backstock";
     els.lastTarget.textContent = label;
     if (els.activeTarget) els.activeTarget.textContent = label;
   }
@@ -94,7 +94,7 @@ export function renderFlavourResults(products, onSelect) {
     button.innerHTML = `
       <span class="result-title">${escapeHtml(product.flavour || product.productType || "Unnamed product")}</span>
       <span class="result-meta">${escapeHtml(product.brand || "")} ${escapeHtml(product.sku ? `SKU ${product.sku}` : "")}</span>
-      <span class="result-stock">Total ${Number(product.totalQty ?? product.shelfStock) || 0} / Back ${Number(product.backstock) || 0}</span>
+      <span class="result-stock">Shelf ${Number(product.shelfStock) || 0} / Back ${Number(product.backstock) || 0} / Total ${Number(product.totalQty) || 0}</span>
     `;
     button.addEventListener("click", () => onSelect(product));
     list.append(button);

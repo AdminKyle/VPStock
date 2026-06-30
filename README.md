@@ -11,7 +11,8 @@ The uploaded Android folder did not include the working scanner logic or any App
 - Barcode: column A
 - SKU: column B
 - Flavour: column E
-- Backstock: column G
+- Backstock: column F
+- Shelf stock: column G
 - Total quantity: column H
 - Last user: column I
 - Last scan: column J
@@ -25,12 +26,13 @@ SPREADSHEET_ID: '1bwoE6i7RW3Ruotf5QXCePL20lJeczgaQU9CvXjc3aRc'
 USERS_SHEET: 'Users'
 STOCK_SHEET: 'MASTER_DB'
 BARCODE_COLUMN: 1
-BACKSTOCK_COLUMN: 7
+BACKSTOCK_COLUMN: 6
+SHELF_STOCK_COLUMN: 7
 TOTAL_QTY_COLUMN: 8
 SCAN_UPDATE_MODE: 'increment'
 ```
 
-If row 1 contains matching headers such as `Barcode`, `Backstock`, or `Total Qty`, the script uses those headers for the main scan columns. Total quantity, last user, and last scan are written to H, I, and J.
+If row 1 contains matching headers such as `Barcode`, `Backstock`, `Shelf Stock`, or `Total Qty`, the script uses those headers for the main scan columns. Backstock, shelf stock, total quantity, last user, and last scan are written to F, G, H, I, and J.
 
 ## Code.gs And Index.html In Apps Script
 
@@ -48,10 +50,10 @@ If you want to keep the old Apps Script-hosted page temporarily, leave its `Inde
 - Login controlled by the Google Sheet `Users` tab.
 - Server-side session token validation in Apps Script.
 - Fast returning-session restore with background validation.
-- Rear-camera barcode scanning using `@zxing/browser`.
+- Rear-camera barcode scanning using Chrome `BarcodeDetector`, with `html5-qrcode` fallback.
 - Manual barcode/SKU fallback.
 - Flavour search against `MASTER_DB` column E, with row-based stock update.
-- Backstock / Total Qty selector before submitting.
+- Backstock / Shelf stock selector before submitting.
 - Duplicate rapid scan prevention.
 - Manual pending-scan retry queue for offline or timed-out submissions.
 - Optional debug/performance mode with `?debug=1`.
@@ -118,10 +120,13 @@ The script updates the configured stock sheet:
 
 - Barcode/SKU lookup column: `CONFIG.BARCODE_COLUMN`
 - Backstock update column: `CONFIG.BACKSTOCK_COLUMN`
-- Total quantity update column: `CONFIG.TOTAL_QTY_COLUMN`
+- Shelf stock update column: `CONFIG.SHELF_STOCK_COLUMN`
+- Total quantity column: `CONFIG.TOTAL_QTY_COLUMN`
 - Last user column: `CONFIG.LAST_USER_COLUMN`
 
-If headers are found in row 1, they take priority over these fallback numbers. Supported default header matches are listed in `CONFIG.BARCODE_HEADERS`, `CONFIG.BACKSTOCK_HEADERS`, and `CONFIG.TOTAL_QTY_HEADERS`.
+If headers are found in row 1, they take priority over these fallback numbers. Supported default header matches are listed in `CONFIG.BARCODE_HEADERS`, `CONFIG.BACKSTOCK_HEADERS`, `CONFIG.SHELF_HEADERS`, and `CONFIG.TOTAL_QTY_HEADERS`.
+
+After either Backstock or Shelf stock changes, the script writes Total Qty as Backstock + Shelf stock.
 
 `CONFIG.SCAN_UPDATE_MODE` controls how a scan changes the cell:
 
