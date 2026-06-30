@@ -420,12 +420,38 @@ h2 {
   left: 10px;
   right: 10px;
   bottom: 10px;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(2, 6, 23, 0.84);
   color: var(--text);
   font-weight: 800;
   text-align: center;
+}
+
+.camera-overlay[data-type="working"] {
+  background: rgba(37, 99, 235, 0.9);
+}
+
+.camera-overlay[data-type="success"] {
+  background: rgba(22, 101, 52, 0.92);
+}
+
+.camera-overlay[data-type="error"],
+.camera-overlay[data-type="warning"] {
+  background: rgba(153, 27, 27, 0.92);
+}
+
+.camera-retry-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #111827;
+  font-weight: 900;
 }
 
 .scanner-actions {

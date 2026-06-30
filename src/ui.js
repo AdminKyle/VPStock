@@ -10,6 +10,8 @@ export const els = {
   logoutButton: document.querySelector("#logoutButton"),
   cameraPreview: document.querySelector("#cameraPreview"),
   cameraOverlay: document.querySelector("#cameraOverlay"),
+  cameraOverlayText: document.querySelector("#cameraOverlayText"),
+  cameraRetryButton: document.querySelector("#cameraRetryButton"),
   startCameraButton: document.querySelector("#startCameraButton"),
   stopCameraButton: document.querySelector("#stopCameraButton"),
   quantityInput: document.querySelector("#quantityInput"),
@@ -44,6 +46,12 @@ export function setLoginLoading(isLoading) {
 export function setCameraRunning(isRunning) {
   els.startCameraButton.disabled = isRunning;
   els.stopCameraButton.disabled = !isRunning;
+}
+
+export function setCameraOverlay(message, type = "neutral", showRetry = false) {
+  els.cameraOverlay.dataset.type = type;
+  els.cameraOverlayText.textContent = message;
+  els.cameraRetryButton.classList.toggle("hidden", !showRetry);
 }
 
 export function setLoginMessage(message, type = "neutral") {

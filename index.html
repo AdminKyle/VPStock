@@ -10,7 +10,7 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=16">
+    <link rel="stylesheet" href="./src/styles.css?v=18">
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -75,7 +75,10 @@
           <section class="camera-panel" aria-label="Camera scanner">
             <div id="cameraPreview" class="camera-preview"></div>
             <div class="scan-frame" aria-hidden="true"></div>
-            <div id="cameraOverlay" class="camera-overlay">Camera ready</div>
+            <div id="cameraOverlay" class="camera-overlay" data-type="neutral">
+              <span id="cameraOverlayText">Camera ready</span>
+              <button id="cameraRetryButton" class="camera-retry-button hidden" type="button">Try Again</button>
+            </div>
           </section>
 
           <div class="scanner-actions">
@@ -118,6 +121,6 @@
         </main>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=16"></script>
+    <script type="module" src="./src/app.js?v=18"></script>
   </body>
 </html>

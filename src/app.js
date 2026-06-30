@@ -3,13 +3,14 @@ import { mark, measure } from "./debug.js";
 import { login, searchProducts, submitScan, updateProductRow, validateSession } from "./api.js";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
 import { loadPendingScans, queueScan, removePendingScan } from "./queue.js";
-import { preloadScannerLibrary, startScanner, stopScanner } from "./scanner.js";
+import { pauseScanner, preloadScannerLibrary, resumeScanner, startScanner, stopScanner } from "./scanner.js";
 import {
   els,
   clearFlavourResults,
   renderFlavourResults,
   renderFlavourMessage,
   selectedTarget,
+  setCameraOverlay,
   setCameraRunning,
   setLoginLoading,
   setQueueCount,
@@ -24,6 +25,7 @@ let session = null;
 let lastScan = { barcode: "", at: 0 };
 let isSubmitting = false;
 let searchTimer = 0;
+let resumeTimer = 0;
 
 function cleanBarcode(value) {
   return String(value || "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
@@ -81,6 +83,25 @@ function toggleQuantitySign() {
 
 function refreshQueueCount() {
   setQueueCount(loadPendingScans().length);
+}
+
+function handleDetectedBarcode(barcode) {
+  handleSubmit(barcode);
+}
+
+function handleCameraStatus(message) {
+  setCameraOverlay(message, "neutral", false);
+}
+
+function resumeCameraScanning(message = "Point the camera at a barcode.") {
+  window.clearTimeout(resumeTimer);
+  resumeScanner(handleDetectedBarcode, handleCameraStatus);
+  setCameraOverlay(message, "neutral", false);
+}
+
+function resumeCameraSoon(message = "Point the camera at a barcode.", delay = 1400) {
+  window.clearTimeout(resumeTimer);
+  resumeTimer = window.setTimeout(() => resumeCameraScanning(message), delay);
 }
 
 async function restoreSession() {
@@ -149,14 +170,20 @@ async function handleSubmit(barcodeFromScanner = "") {
   let quantity;
 
   if (isSubmitting) return;
+  if (barcode) {
+    pauseScanner();
+    setCameraOverlay(`Found ${barcode}. Preparing...`, "working", false);
+  }
 
   if (!session) {
+    setCameraOverlay("Please log in before scanning.", "error", true);
     showLogin("Please log in before scanning.");
     return;
   }
 
   const barcodeError = validateBarcode(barcode);
   if (barcodeError) {
+    setCameraOverlay(barcodeError, "error", true);
     setStatus(barcodeError, "error");
     return;
   }
@@ -164,13 +191,16 @@ async function handleSubmit(barcodeFromScanner = "") {
   try {
     quantity = readQuantity();
   } catch (error) {
+    setCameraOverlay(error.message, "error", true);
     setStatus(error.message, "error");
     return;
   }
 
   if (isDuplicate(barcode)) {
     updateRecent({ barcode, target });
+    setCameraOverlay("Duplicate scan ignored.", "warning", false);
     setStatus("Duplicate scan ignored. Wait a moment before scanning it again.", "warning");
+    resumeCameraSoon();
     return;
   }
 
@@ -178,25 +208,34 @@ async function handleSubmit(barcodeFromScanner = "") {
     const queued = queueScan({ barcode, target, quantity, username: session.username });
     updateRecent({ barcode, target });
     refreshQueueCount();
+    setCameraOverlay(`Queued ${queued.barcode}.`, "warning", false);
     setStatus(`Offline. Scan queued for manual retry (${queued.barcode}).`, "warning");
+    resumeCameraSoon();
     return;
   }
 
   updateRecent({ barcode, target });
   isSubmitting = true;
+  setCameraOverlay(`Submitting ${barcode}...`, "working", false);
   setStatus(`Submitting ${barcode} to ${targetLabel(target)}...`);
   mark("scan-submit:start");
 
   try {
     const result = await submitScan({ session, barcode, target, quantity });
+    const action = quantity < 0 ? "Deducted" : "Successfully Added";
+    setCameraOverlay(`${action} ${Math.abs(quantity)} to ${targetLabel(target)}.`, "success", false);
     setStatus(result.message || `${targetLabel(target)} updated.`, "success");
     measure("scan-submit:confirmed", "scan-submit:start");
+    resumeCameraSoon();
   } catch (error) {
     if (!navigator.onLine || /timed out|failed/i.test(error.message)) {
       queueScan({ barcode, target, quantity, username: session.username });
       refreshQueueCount();
+      setCameraOverlay("Connection issue. Scan queued.", "warning", false);
       setStatus(`${error.message} Scan queued for manual retry.`, "warning");
+      resumeCameraSoon();
     } else {
+      setCameraOverlay(error.message, "error", true);
       setStatus(error.message, "error");
     }
   } finally {
@@ -309,27 +348,28 @@ function bindEvents() {
     try {
       await startScanner(
         els.cameraPreview,
-        (barcode) => handleSubmit(barcode),
-        (message) => {
-          els.cameraOverlay.textContent = message;
-        }
+        handleDetectedBarcode,
+        handleCameraStatus
       );
       setCameraRunning(true);
+      setCameraOverlay("Point the camera at a barcode.", "neutral", false);
     } catch (error) {
       setCameraRunning(false);
       const message = error.message || "Camera unavailable. Chrome did not provide an error reason.";
-      els.cameraOverlay.textContent = message;
+      setCameraOverlay(message, "error", true);
       setStatus(message, "error");
     }
   });
 
   els.stopCameraButton.addEventListener("click", () => {
+    window.clearTimeout(resumeTimer);
     stopScanner();
     setCameraRunning(false);
-    els.cameraOverlay.textContent = "Camera stopped";
+    setCameraOverlay("Camera stopped", "neutral", false);
   });
 
   els.logoutButton.addEventListener("click", () => {
+    window.clearTimeout(resumeTimer);
     stopScanner();
     clearSession();
     session = null;
@@ -342,6 +382,7 @@ function bindEvents() {
   });
 
   els.retryQueueButton?.addEventListener("click", retryPendingScans);
+  els.cameraRetryButton?.addEventListener("click", () => resumeCameraScanning());
   els.flavourSearchInput?.addEventListener("input", handleFlavourSearch);
   els.quantitySignButton?.addEventListener("click", toggleQuantitySign);
   els.quantityInput?.addEventListener("input", syncQuantitySignButton);

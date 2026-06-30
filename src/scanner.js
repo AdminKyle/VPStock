@@ -8,6 +8,7 @@ let video;
 let detector;
 let scanLoop = 0;
 let lastDetectedAt = 0;
+let isPaused = false;
 
 const SCAN_COOLDOWN_MS = 1400;
 const DETECT_INTERVAL_MS = 180;
@@ -57,6 +58,7 @@ export async function startScanner(containerElement, onScan, onStatus) {
 
   stopScanner();
   clearScannerContainer(containerElement);
+  isPaused = false;
   onStatus?.("Starting camera...");
   mark("camera:start");
 
@@ -71,6 +73,7 @@ export async function startScanner(containerElement, onScan, onStatus) {
 }
 
 export function stopScanner() {
+  isPaused = false;
   if (scanLoop) {
     window.clearTimeout(scanLoop);
     scanLoop = 0;
@@ -94,6 +97,33 @@ export function stopScanner() {
     activeScanner.stop().then(() => activeScanner.clear()).catch(() => {});
   } else {
     activeScanner?.clear?.();
+  }
+}
+
+export function pauseScanner() {
+  isPaused = true;
+  if (scanLoop) {
+    window.clearTimeout(scanLoop);
+    scanLoop = 0;
+  }
+  if (video) video.pause();
+  if (html5QrCode?.isScanning && typeof html5QrCode.pause === "function") {
+    try {
+      html5QrCode.pause(true);
+    } catch {}
+  }
+}
+
+export function resumeScanner(onScan, onStatus) {
+  isPaused = false;
+  if (video && detector) {
+    video.play().catch(() => {});
+    if (!scanLoop) runNativeDetection(onScan, onStatus);
+  }
+  if (html5QrCode && typeof html5QrCode.resume === "function") {
+    try {
+      html5QrCode.resume();
+    } catch {}
   }
 }
 
@@ -148,6 +178,10 @@ async function createBarcodeDetector() {
 function runNativeDetection(onScan, onStatus) {
   scanLoop = window.setTimeout(async () => {
     try {
+      if (isPaused) {
+        scanLoop = 0;
+        return;
+      }
       if (!video || !detector) return;
       const codes = await detector.detect(video);
       const firstCode = codes && codes[0];
@@ -216,6 +250,7 @@ function loadHtml5QrCode() {
 function clearScannerContainer(containerElement) {
   containerElement.innerHTML = "";
   lastDetectedAt = 0;
+  isPaused = false;
 }
 
 function friendlyCameraError(error, step) {
