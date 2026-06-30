@@ -273,8 +273,9 @@ function bindEvents() {
       setCameraRunning(true);
     } catch (error) {
       setCameraRunning(false);
-      els.cameraOverlay.textContent = error.message || "Camera unavailable";
-      setStatus(error.message, "error");
+      const message = error.message || "Camera unavailable. Chrome did not provide an error reason.";
+      els.cameraOverlay.textContent = message;
+      setStatus(message, "error");
     }
   });
 
