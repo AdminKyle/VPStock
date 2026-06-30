@@ -54,7 +54,10 @@
           <section class="panel quantity-panel" aria-label="Quantity">
             <label class="field compact-field">
               <span>Quantity</span>
-              <input id="quantityInput" name="quantity" type="number" inputmode="decimal" step="1" value="1">
+              <span class="quantity-control">
+                <button id="quantitySignButton" class="quantity-sign-button" type="button" aria-label="Toggle quantity sign" title="Toggle add or deduct">+/-</button>
+                <input id="quantityInput" name="quantity" type="number" inputmode="numeric" step="1" value="1">
+              </span>
             </label>
           </section>
 

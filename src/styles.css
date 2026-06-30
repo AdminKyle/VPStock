@@ -168,6 +168,30 @@ h2 {
   padding: 14px 16px;
 }
 
+.quantity-control {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.quantity-sign-button {
+  width: 58px;
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.quantity-sign-button[data-mode="deduct"] {
+  border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
 .search-panel h2 {
   font-size: 1rem;
 }
@@ -275,7 +299,7 @@ h2 {
 }
 
 .compact-field {
-  max-width: 148px;
+  max-width: 220px;
 }
 
 .primary-button {

@@ -13,6 +13,7 @@ export const els = {
   startCameraButton: document.querySelector("#startCameraButton"),
   stopCameraButton: document.querySelector("#stopCameraButton"),
   quantityInput: document.querySelector("#quantityInput"),
+  quantitySignButton: document.querySelector("#quantitySignButton"),
   flavourSearchInput: document.querySelector("#flavourSearchInput"),
   flavourResults: document.querySelector("#flavourResults"),
   statusBanner: document.querySelector("#statusBanner"),

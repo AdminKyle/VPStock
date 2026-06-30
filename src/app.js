@@ -61,6 +61,24 @@ function readQuantity() {
   return quantity;
 }
 
+function syncQuantitySignButton() {
+  const isDeduct = String(els.quantityInput.value || "").trim().startsWith("-");
+  els.quantitySignButton.dataset.mode = isDeduct ? "deduct" : "add";
+}
+
+function toggleQuantitySign() {
+  const rawValue = String(els.quantityInput.value || "").trim();
+  if (!rawValue || rawValue === "0") {
+    els.quantityInput.value = "-1";
+  } else if (rawValue.startsWith("-")) {
+    els.quantityInput.value = rawValue.slice(1) || "1";
+  } else {
+    els.quantityInput.value = `-${rawValue}`;
+  }
+  syncQuantitySignButton();
+  els.quantityInput.focus();
+}
+
 function refreshQueueCount() {
   setQueueCount(loadPendingScans().length);
 }
@@ -325,6 +343,8 @@ function bindEvents() {
 
   els.retryQueueButton?.addEventListener("click", retryPendingScans);
   els.flavourSearchInput?.addEventListener("input", handleFlavourSearch);
+  els.quantitySignButton?.addEventListener("click", toggleQuantitySign);
+  els.quantityInput?.addEventListener("input", syncQuantitySignButton);
 
   window.addEventListener("online", () => setStatus("Back online. Ready to submit scans.", "success"));
   window.addEventListener("offline", () => setStatus("Offline. The app opens, but scans cannot be submitted.", "warning"));
@@ -353,6 +373,7 @@ async function registerServiceWorker() {
 }
 
 bindEvents();
+syncQuantitySignButton();
 registerServiceWorker();
 refreshQueueCount();
 mark("app:load");
