@@ -273,7 +273,7 @@ function bindEvents() {
       setCameraRunning(true);
     } catch (error) {
       setCameraRunning(false);
-      els.cameraOverlay.textContent = "Camera unavailable";
+      els.cameraOverlay.textContent = error.message || "Camera unavailable";
       setStatus(error.message, "error");
     }
   });

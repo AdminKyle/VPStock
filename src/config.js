@@ -7,5 +7,5 @@ export const CONFIG = {
   SESSION_REVALIDATE_MS: 5 * 60 * 1000,
   MIN_BARCODE_LENGTH: 4,
   MAX_BARCODE_LENGTH: 48,
-  ZXING_CDN: "https://unpkg.com/@zxing/browser@0.2.0/+esm"
+  HTML5_QRCODE_CDN: "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
 };

@@ -1,106 +1,110 @@
 import { CONFIG } from "./config.js";
 import { mark, measure } from "./debug.js";
 
-let codeReader;
-let controls;
+let html5QrCode;
 let libraryPromise;
+let lastDetectedAt = 0;
 
-const CAMERA_CONSTRAINTS = [
-  {
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
-    audio: false
-  },
-  {
-    video: {
-      facingMode: "environment"
-    },
-    audio: false
-  },
-  {
-    video: true,
-    audio: false
-  }
-];
+const SCAN_COOLDOWN_MS = 1400;
+const SCANNER_CONFIG = {
+  fps: 10,
+  qrbox: { width: 250, height: 250 },
+  aspectRatio: 1.333,
+  disableFlip: true
+};
 
 export function preloadScannerLibrary() {
   if (!libraryPromise) {
     mark("scanner-library:start");
-    libraryPromise = import(CONFIG.ZXING_CDN).then((module) => {
+    libraryPromise = loadHtml5QrCode().then(() => {
       measure("scanner-library:loaded", "scanner-library:start");
-      return module;
+      return window.Html5Qrcode;
     });
   }
   return libraryPromise;
 }
 
-export async function startScanner(videoElement, onScan, onStatus) {
+export async function startScanner(containerElement, onScan, onStatus) {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Camera scanning requires a modern browser over HTTPS.");
+    throw new Error("Camera scanning requires Chrome over HTTPS.");
   }
 
-  if (!codeReader) {
-    const { BrowserMultiFormatReader } = await preloadScannerLibrary();
-    codeReader = new BrowserMultiFormatReader();
-  }
-
+  const Html5Qrcode = await preloadScannerLibrary();
   stopScanner();
+  clearScannerContainer(containerElement);
+
+  html5QrCode = new Html5Qrcode(containerElement.id, { verbose: false });
   onStatus?.("Starting camera...");
   mark("camera:start");
 
-  controls = await startWithFallbackConstraints(videoElement, onScan, onStatus);
+  try {
+    await html5QrCode.start(
+      { facingMode: "environment" },
+      SCANNER_CONFIG,
+      (decodedText) => {
+        const now = Date.now();
+        if (now - lastDetectedAt < SCAN_COOLDOWN_MS) return;
+        lastDetectedAt = now;
+        mark("scan:detected");
+        if (navigator.vibrate) navigator.vibrate(80);
+        onScan(decodedText);
+      },
+      () => {}
+    );
+  } catch (error) {
+    stopScanner();
+    throw friendlyCameraError(error);
+  }
 
   onStatus?.("Point the camera at a barcode.");
   measure("camera:ready", "camera:start");
 }
 
 export function stopScanner() {
-  if (controls) {
-    controls.stop();
-    controls = null;
+  const activeScanner = html5QrCode;
+  html5QrCode = null;
+  if (activeScanner?.isScanning) {
+    activeScanner.stop().then(() => activeScanner.clear()).catch(() => {});
+  } else {
+    activeScanner?.clear?.();
   }
 }
 
-async function startWithFallbackConstraints(videoElement, onScan, onStatus) {
-  let lastError;
-  for (const constraints of CAMERA_CONSTRAINTS) {
-    try {
-      return await codeReader.decodeFromConstraints(
-        constraints,
-        videoElement,
-        (result, error) => {
-          if (result) {
-            mark("scan:detected");
-            onScan(result.getText());
-          } else if (error?.name && error.name !== "NotFoundException") {
-            onStatus?.("Camera is searching...");
-          }
-        }
-      );
-    } catch (error) {
-      lastError = error;
-      stopScanner();
+function loadHtml5QrCode() {
+  if (window.Html5Qrcode) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${CONFIG.HTML5_QRCODE_CDN}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Scanner library failed to load.")), { once: true });
+      return;
     }
-  }
-  throw friendlyCameraError(lastError);
+
+    const script = document.createElement("script");
+    script.src = CONFIG.HTML5_QRCODE_CDN;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Scanner library failed to load."));
+    document.head.append(script);
+  });
+}
+
+function clearScannerContainer(containerElement) {
+  containerElement.innerHTML = "";
+  lastDetectedAt = 0;
 }
 
 function friendlyCameraError(error) {
-  const name = error?.name || "";
-  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-    return new Error("Camera permission was blocked. Allow camera access in your browser settings, then try again.");
+  const text = String(error?.message || error || "");
+  if (/notallowed|permission|denied/i.test(text)) {
+    return new Error("Camera permission was blocked. In Chrome, allow camera access for this installed app/site and try again.");
   }
-  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+  if (/notfound|no camera|requested device not found/i.test(text)) {
     return new Error("No camera was found on this device.");
   }
-  if (name === "NotReadableError" || name === "TrackStartError") {
+  if (/notreadable|trackstart|in use/i.test(text)) {
     return new Error("The camera is already in use by another app. Close other camera apps and try again.");
   }
-  if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
-    return new Error("This device rejected the camera settings. Refresh the page and try again.");
-  }
-  return new Error(error?.message || "Camera unavailable.");
+  return new Error(text || "Camera unavailable.");
 }
