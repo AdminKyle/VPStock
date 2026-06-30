@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#111827">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Stock Scanner">
+    <title>Stock Scanner</title>
+    <link rel="manifest" href="./public/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./public/icons/icon.svg">
+    <link rel="stylesheet" href="./src/styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <section id="loginView" class="view login-view" aria-labelledby="loginTitle">
+        <div class="brand-lockup">
+          <div class="app-mark" aria-hidden="true">
+            <span></span>
+          </div>
+          <div>
+            <p class="eyebrow">Stock Scanner</p>
+            <h1 id="loginTitle">Sign in</h1>
+          </div>
+        </div>
+
+        <form id="loginForm" class="panel form-stack" autocomplete="on">
+          <label class="field">
+            <span>Staff name</span>
+            <input id="usernameInput" name="username" autocomplete="username" inputmode="text" required>
+          </label>
+          <label class="field">
+            <span>PIN or password</span>
+            <input id="pinInput" name="pin" type="password" autocomplete="current-password" inputmode="numeric">
+          </label>
+          <button id="loginButton" class="primary-button" type="submit">Log in</button>
+          <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section id="scannerView" class="view scanner-view hidden" aria-labelledby="scannerTitle">
+        <header class="top-bar">
+          <div>
+            <p class="eyebrow">Signed in as</p>
+            <h1 id="scannerTitle"><span id="currentUser">Staff</span></h1>
+          </div>
+          <button id="logoutButton" class="icon-button" type="button" aria-label="Log out" title="Log out">
+            <span aria-hidden="true">↪</span>
+          </button>
+        </header>
+
+        <main class="scanner-main">
+          <section class="panel quantity-panel" aria-label="Quantity">
+            <label class="field compact-field">
+              <span>Quantity</span>
+              <input id="quantityInput" name="quantity" type="number" inputmode="numeric" min="1" step="1" value="1">
+            </label>
+          </section>
+
+          <fieldset class="mode-switch" aria-label="Scan target">
+            <label>
+              <input type="radio" name="targetMode" value="backstock" checked>
+              <span>Backstock</span>
+            </label>
+            <label>
+              <input type="radio" name="targetMode" value="shelf">
+              <span>Shelf stock</span>
+            </label>
+          </fieldset>
+
+          <section class="camera-panel" aria-label="Camera scanner">
+            <video id="cameraPreview" playsinline muted></video>
+            <div class="scan-frame" aria-hidden="true"></div>
+            <div id="cameraOverlay" class="camera-overlay">Camera ready</div>
+          </section>
+
+          <div class="scanner-actions">
+            <button id="startCameraButton" class="secondary-button" type="button">Start camera</button>
+            <button id="stopCameraButton" class="ghost-button" type="button" disabled>Stop</button>
+          </div>
+
+          <section class="panel form-stack">
+            <div class="active-mode">Next update: <strong id="activeTarget">Backstock</strong></div>
+          </section>
+
+          <section class="panel form-stack search-panel" aria-labelledby="flavourSearchTitle">
+            <h2 id="flavourSearchTitle">Search flavour</h2>
+            <label class="field">
+              <span>Flavour in MASTER_DB column E</span>
+              <input id="flavourSearchInput" name="flavourSearch" autocomplete="off" inputmode="search" placeholder="Type flavour name">
+            </label>
+            <div id="flavourResults" class="search-results hidden"></div>
+          </section>
+          <button id="retryQueueButton" class="ghost-button queue-button" type="button" disabled>
+            Retry pending scans (<span id="queueCount">0</span>)
+          </button>
+
+          <section class="status-panel" aria-labelledby="recentScanTitle">
+            <h2 id="recentScanTitle">Recent scan</h2>
+            <div id="statusBanner" class="status-banner neutral" role="status" aria-live="polite">
+              Waiting for a scan.
+            </div>
+            <dl class="scan-details">
+              <div>
+                <dt>Barcode</dt>
+                <dd id="lastBarcode">None</dd>
+              </div>
+              <div>
+                <dt>Target</dt>
+                <dd id="lastTarget">Backstock</dd>
+              </div>
+            </dl>
+          </section>
+        </main>
+      </section>
+    </div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
