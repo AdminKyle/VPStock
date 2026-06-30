@@ -30,7 +30,7 @@ function cleanBarcode(value) {
 }
 
 function targetLabel(target) {
-  return target === "shelf" ? "Shelf stock" : "Backstock";
+  return target === "shelf" ? "Total Qty" : "Backstock";
 }
 
 function isDuplicate(barcode) {

@@ -12,8 +12,8 @@ The uploaded Android folder did not include the working scanner logic or any App
 - SKU: column B
 - Flavour: column E
 - Backstock: column G
-- Shelf stock: column H
-- Total quantity: column I
+- Total quantity: column H
+- Last user: column I
 - Last scan: column J
 
 The replacement `apps-script/Code.gs` uses those values.
@@ -26,11 +26,11 @@ USERS_SHEET: 'Users'
 STOCK_SHEET: 'MASTER_DB'
 BARCODE_COLUMN: 1
 BACKSTOCK_COLUMN: 7
-SHELF_STOCK_COLUMN: 8
+TOTAL_QTY_COLUMN: 8
 SCAN_UPDATE_MODE: 'increment'
 ```
 
-If row 1 contains matching headers such as `Barcode`, `Backstock`, or `Shelf Stock`, the script uses those headers for the main scan columns. Total quantity and last scan are written to I and J.
+If row 1 contains matching headers such as `Barcode`, `Backstock`, or `Total Qty`, the script uses those headers for the main scan columns. Total quantity, last user, and last scan are written to H, I, and J.
 
 ## Code.gs And Index.html In Apps Script
 
@@ -51,7 +51,7 @@ If you want to keep the old Apps Script-hosted page temporarily, leave its `Inde
 - Rear-camera barcode scanning using `@zxing/browser`.
 - Manual barcode/SKU fallback.
 - Flavour search against `MASTER_DB` column E, with row-based stock update.
-- Backstock / Shelf stock selector before submitting.
+- Backstock / Total Qty selector before submitting.
 - Duplicate rapid scan prevention.
 - Manual pending-scan retry queue for offline or timed-out submissions.
 - Optional debug/performance mode with `?debug=1`.
@@ -118,9 +118,10 @@ The script updates the configured stock sheet:
 
 - Barcode/SKU lookup column: `CONFIG.BARCODE_COLUMN`
 - Backstock update column: `CONFIG.BACKSTOCK_COLUMN`
-- Shelf stock update column: `CONFIG.SHELF_STOCK_COLUMN`
+- Total quantity update column: `CONFIG.TOTAL_QTY_COLUMN`
+- Last user column: `CONFIG.LAST_USER_COLUMN`
 
-If headers are found in row 1, they take priority over these fallback numbers. Supported default header matches are listed in `CONFIG.BARCODE_HEADERS`, `CONFIG.BACKSTOCK_HEADERS`, and `CONFIG.SHELF_HEADERS`.
+If headers are found in row 1, they take priority over these fallback numbers. Supported default header matches are listed in `CONFIG.BARCODE_HEADERS`, `CONFIG.BACKSTOCK_HEADERS`, and `CONFIG.TOTAL_QTY_HEADERS`.
 
 `CONFIG.SCAN_UPDATE_MODE` controls how a scan changes the cell:
 
