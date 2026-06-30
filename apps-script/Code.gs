@@ -150,8 +150,10 @@ function recordScan(payload) {
       throw new Error('Barcode not found.');
     }
 
-    const update = performStockUpdate(sheet, row, target, quantity, columns, session);
-    const product = getProductFromRow(sheet, row);
+    const rowValues = getProductRowValues(sheet, row);
+    const update = performStockUpdate(sheet, row, target, quantity, columns, session, rowValues);
+    const product = getProductFromValues(update.rowValues, row);
+    delete update.rowValues;
 
     const message = (target === 'backstock' ? 'Backstock' : 'Shelf stock') + ' updated.';
     logScan(session, barcode, target, quantity, true, message);
@@ -308,10 +310,12 @@ function findValueRow(sheet, column, value) {
   return found ? found.getRow() : 0;
 }
 
-function performStockUpdate(sheet, row, target, quantity, columns, session) {
-  const currentBackstock = Number(sheet.getRange(row, columns.backstock).getValue()) || 0;
-  const currentShelf = Number(sheet.getRange(row, columns.shelf).getValue()) || 0;
+function performStockUpdate(sheet, row, target, quantity, columns, session, rowValues) {
+  const values = rowValues || getProductRowValues(sheet, row);
+  const currentBackstock = Number(values[columns.backstock - 1]) || 0;
+  const currentShelf = Number(values[columns.shelf - 1]) || 0;
   const lastUser = session.displayName || session.username || '';
+  const lastScan = new Date();
   let nextBackstock = currentBackstock;
   let nextShelf = currentShelf;
 
@@ -322,12 +326,13 @@ function performStockUpdate(sheet, row, target, quantity, columns, session) {
   }
   const nextTotalQty = nextBackstock + nextShelf;
 
-  sheet.getRange(row, columns.backstock).setValue(nextBackstock);
-  sheet.getRange(row, columns.shelf).setValue(nextShelf);
-  sheet.getRange(row, columns.totalQty).setValue(nextTotalQty);
-  sheet.getRange(row, columns.lastUser).setValue(lastUser);
-  sheet.getRange(row, columns.lastScan).setValue(new Date());
-  SpreadsheetApp.flush();
+  values[columns.backstock - 1] = nextBackstock;
+  values[columns.shelf - 1] = nextShelf;
+  values[columns.totalQty - 1] = nextTotalQty;
+  values[columns.lastUser - 1] = lastUser;
+  values[columns.lastScan - 1] = lastScan;
+
+  writeStockUpdate(sheet, row, columns, values);
 
   return {
     mode: target,
@@ -337,8 +342,29 @@ function performStockUpdate(sheet, row, target, quantity, columns, session) {
     backstock: nextBackstock,
     shelfStock: nextShelf,
     totalQty: nextTotalQty,
-    lastUser: lastUser
+    lastUser: lastUser,
+    rowValues: values
   };
+}
+
+function writeStockUpdate(sheet, row, columns, values) {
+  if (
+    columns.shelf === columns.backstock + 1 &&
+    columns.totalQty === columns.backstock + 2 &&
+    columns.lastUser === columns.backstock + 3 &&
+    columns.lastScan === columns.backstock + 4
+  ) {
+    sheet
+      .getRange(row, columns.backstock, 1, 5)
+      .setValues([values.slice(columns.backstock - 1, columns.lastScan)]);
+    return;
+  }
+
+  sheet.getRange(row, columns.backstock).setValue(values[columns.backstock - 1]);
+  sheet.getRange(row, columns.shelf).setValue(values[columns.shelf - 1]);
+  sheet.getRange(row, columns.totalQty).setValue(values[columns.totalQty - 1]);
+  sheet.getRange(row, columns.lastUser).setValue(values[columns.lastUser - 1]);
+  sheet.getRange(row, columns.lastScan).setValue(values[columns.lastScan - 1]);
 }
 
 function nextStockValue(currentValue, quantity) {
@@ -348,7 +374,7 @@ function nextStockValue(currentValue, quantity) {
 }
 
 function getProductFromRow(sheet, row) {
-  const data = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), CONFIG.LAST_SCAN_COLUMN)).getValues()[0];
+  const data = getProductRowValues(sheet, row);
   const backstock = Number(data[CONFIG.BACKSTOCK_COLUMN - 1]) || 0;
   const shelfStock = Number(data[CONFIG.SHELF_STOCK_COLUMN - 1]) || 0;
   const totalQty = Number(data[CONFIG.TOTAL_QTY_COLUMN - 1]) || 0;
@@ -366,6 +392,10 @@ function getProductFromRow(sheet, row) {
     lastUser: clean(data[CONFIG.LAST_USER_COLUMN - 1]),
     lastScan: dateToIso(data[CONFIG.LAST_SCAN_COLUMN - 1])
   };
+}
+
+function getProductRowValues(sheet, row) {
+  return sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), CONFIG.LAST_SCAN_COLUMN)).getValues()[0];
 }
 
 function getAllProducts() {
@@ -485,8 +515,10 @@ function updateByRowLegacy(payload) {
   try {
     const sheet = getStockSheet();
     const columns = getStockColumns(sheet);
-    const update = performStockUpdate(sheet, row, target, quantity, columns, session);
-    const product = getProductFromRow(sheet, row);
+    const rowValues = getProductRowValues(sheet, row);
+    const update = performStockUpdate(sheet, row, target, quantity, columns, session, rowValues);
+    const product = getProductFromValues(update.rowValues, row);
+    delete update.rowValues;
     const message = (target === 'backstock' ? 'Backstock' : 'Shelf stock') + ' updated.';
     logScan(session, product.barcode, target, quantity, true, message);
     return { ok: true, success: true, message: message, product: product, update: update };
