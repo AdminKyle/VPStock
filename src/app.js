@@ -214,7 +214,7 @@ async function handleSubmit(barcodeFromScanner = "") {
     return;
   }
 
-  updateRecent({ barcode, target });
+  updateRecent({ target });
   isSubmitting = true;
   setCameraOverlay(`Submitting ${barcode}...`, "working", false);
   setStatus(`Submitting ${barcode} to ${targetLabel(target)}...`);
@@ -222,7 +222,9 @@ async function handleSubmit(barcodeFromScanner = "") {
 
   try {
     const result = await submitScan({ session, barcode, target, quantity });
+    const flavour = result.product?.flavour || result.product?.productType || barcode;
     const action = quantity < 0 ? "Deducted" : "Successfully Added";
+    updateRecent({ flavour, barcode, target });
     setCameraOverlay(`${action} ${Math.abs(quantity)} to ${targetLabel(target)}.`, "success", false);
     setStatus(result.message || `${targetLabel(target)} updated.`, "success");
     measure("scan-submit:confirmed", "scan-submit:start");
@@ -324,7 +326,7 @@ async function handleProductSelect(product) {
   }
 
   isSubmitting = true;
-  updateRecent({ barcode: product.flavour || product.sku || `Row ${product.row}`, target });
+  updateRecent({ flavour: product.flavour || product.productType || product.sku || `Row ${product.row}`, target });
   setStatus(`Updating ${product.flavour || "selected product"} to ${targetLabel(target)}...`);
   mark("row-update:start");
 

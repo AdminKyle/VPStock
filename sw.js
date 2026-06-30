@@ -1,8 +1,8 @@
-const CACHE_NAME = "stock-scanner-v18";
+const CACHE_NAME = "stock-scanner-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./src/app.js?v=18",
+  "./src/app.js?v=19",
   "./src/api.js",
   "./src/auth.js",
   "./src/config.js",

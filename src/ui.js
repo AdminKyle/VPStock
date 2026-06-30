@@ -64,8 +64,8 @@ export function setStatus(message, type = "neutral") {
   els.statusBanner.className = `status-banner ${type}`;
 }
 
-export function updateRecent({ barcode, target }) {
-  if (barcode) els.lastBarcode.textContent = barcode;
+export function updateRecent({ barcode, flavour, target }) {
+  if (flavour || barcode) els.lastBarcode.textContent = flavour || barcode;
   if (target) {
     const label = target === "shelf" ? "Shelf stock" : "Backstock";
     els.lastTarget.textContent = label;
