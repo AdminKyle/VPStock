@@ -130,7 +130,7 @@ function validateSession(payload) {
 function recordScan(payload) {
   const barcode = cleanBarcode(payload.barcode || payload.sku);
   const target = clean(payload.target || payload.mode || 'backstock').toLowerCase();
-  const quantity = Math.max(1, Math.floor(Number(payload.quantity || 1)));
+  const quantity = parseQuantity(payload.quantity);
 
   validateBarcode(barcode);
   if (target !== 'backstock' && target !== 'shelf') throw new Error('Invalid scan target.');
@@ -450,7 +450,7 @@ function scanBarcodeLegacy(payload) {
   return recordScan({
     barcode: payload.barcode,
     target: payload.mode || 'shelf',
-    quantity: payload.qty || 1,
+    quantity: payload.qty,
     token: payload.token,
     username: payload.username
   });
@@ -458,7 +458,7 @@ function scanBarcodeLegacy(payload) {
 
 function updateByRowLegacy(payload) {
   const target = clean(payload.mode || payload.target || 'shelf').toLowerCase();
-  const quantity = Math.max(1, Number(payload.qty || payload.quantity || 1));
+  const quantity = parseQuantity(payload.qty || payload.quantity);
   const row = Number(payload.row || 0);
   const session = authorizeScan(payload);
 
@@ -512,6 +512,14 @@ function findHeader(headers, candidates, fallback) {
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
+}
+
+function parseQuantity(value) {
+  const rawValue = clean(value == null || value === '' ? 1 : value);
+  if (!/^-?\d+$/.test(rawValue)) throw new Error('Quantity must be a whole number.');
+  const quantity = Number(rawValue);
+  if (!isFinite(quantity) || quantity === 0) throw new Error('Quantity cannot be 0.');
+  return quantity;
 }
 
 function dateToIso(value) {

@@ -48,6 +48,19 @@ function validateBarcode(barcode) {
   return "";
 }
 
+function readQuantity() {
+  const rawValue = String(els.quantityInput.value || "").trim();
+  if (!/^-?\d+$/.test(rawValue)) {
+    throw new Error("Enter a whole quantity, for example 1 or -1.");
+  }
+
+  const quantity = Number.parseInt(rawValue, 10);
+  if (!Number.isSafeInteger(quantity) || quantity === 0) {
+    throw new Error("Quantity cannot be 0.");
+  }
+  return quantity;
+}
+
 function refreshQueueCount() {
   setQueueCount(loadPendingScans().length);
 }
@@ -115,7 +128,7 @@ async function handleLogin(event) {
 async function handleSubmit(barcodeFromScanner = "") {
   const barcode = cleanBarcode(barcodeFromScanner);
   const target = selectedTarget();
-  const quantity = Math.max(1, Number.parseInt(els.quantityInput.value || "1", 10));
+  let quantity;
 
   if (isSubmitting) return;
 
@@ -127,6 +140,13 @@ async function handleSubmit(barcodeFromScanner = "") {
   const barcodeError = validateBarcode(barcode);
   if (barcodeError) {
     setStatus(barcodeError, "error");
+    return;
+  }
+
+  try {
+    quantity = readQuantity();
+  } catch (error) {
+    setStatus(error.message, "error");
     return;
   }
 
@@ -229,7 +249,7 @@ async function handleFlavourSearch() {
 
 async function handleProductSelect(product) {
   const target = selectedTarget();
-  const quantity = Math.max(1, Number.parseInt(els.quantityInput.value || "1", 10));
+  let quantity;
   if (isSubmitting) return;
   if (!session) {
     showLogin("Please log in before updating stock.");
@@ -237,6 +257,12 @@ async function handleProductSelect(product) {
   }
   if (!navigator.onLine) {
     setStatus("Offline. Row updates cannot be queued safely; retry when online.", "warning");
+    return;
+  }
+  try {
+    quantity = readQuantity();
+  } catch (error) {
+    setStatus(error.message, "error");
     return;
   }
 
