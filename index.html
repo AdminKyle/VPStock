@@ -10,7 +10,21 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=20">
+    <link rel="stylesheet" href="./src/styles.css?v=22">
+    <script>
+      (() => {
+        try {
+          const queueKey = "stock-scanner-pending-scans";
+          const resetKey = `${queueKey}-reset-v22`;
+          const forceReset = new URLSearchParams(location.search).has("clear-retries");
+          if (forceReset || !localStorage.getItem(resetKey)) {
+            localStorage.removeItem(queueKey);
+            localStorage.setItem(`${queueKey}-version`, "3");
+            localStorage.setItem(resetKey, "1");
+          }
+        } catch {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -102,9 +116,12 @@
               <p class="section-label">Scanner status</p>
               <div id="statusBanner" class="status-banner neutral" role="status" aria-live="polite">Ready for the next scan.</div>
             </div>
-            <button id="retryQueueButton" class="queue-button hidden" type="button" disabled>
-              Retry <span id="queueCount">0</span>
-            </button>
+            <div id="queueActions" class="queue-actions hidden">
+              <button id="retryQueueButton" class="queue-button" type="button" disabled>
+                Retry <span id="queueCount">0</span>
+              </button>
+              <button id="clearQueueButton" class="queue-button clear-queue-button" type="button" disabled>Clear</button>
+            </div>
           </section>
 
           <button id="startCameraButton" class="camera-launch-button" type="button">
@@ -142,6 +159,6 @@
         </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=21"></script>
+    <script type="module" src="./src/app.js?v=22"></script>
   </body>
 </html>

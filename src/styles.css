@@ -722,6 +722,18 @@ p {
   font-weight: 800;
 }
 
+.queue-actions {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 5px;
+}
+
+.clear-queue-button {
+  border-color: rgba(255, 107, 122, 0.34);
+  background: var(--danger-soft);
+  color: #ffadb6;
+}
+
 .camera-launch-button {
   display: grid;
   grid-template-columns: 62px minmax(0, 1fr) auto;

@@ -1,8 +1,8 @@
-const CACHE_NAME = "stock-scanner-v21";
+const CACHE_NAME = "stock-scanner-v22";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./src/app.js?v=21",
+  "./src/app.js?v=22",
   "./src/api.js",
   "./src/auth.js",
   "./src/config.js",
@@ -10,7 +10,7 @@ const APP_SHELL = [
   "./src/queue.js",
   "./src/scanner.js",
   "./src/ui.js",
-  "./src/styles.css?v=20",
+  "./src/styles.css?v=22",
   "./public/manifest.webmanifest",
   "./public/icons/icon.svg"
 ];
@@ -31,17 +31,21 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) return;
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response.ok && new URL(event.request.url).origin === self.location.origin) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return response;
-      });
+  event.respondWith(fetch(event.request)
+    .then((response) => {
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      }
+      return response;
     })
-  );
+    .catch(async () => {
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      if (event.request.mode === "navigate") return caches.match("./index.html");
+      return Response.error();
+    }));
 });

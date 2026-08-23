@@ -26,7 +26,9 @@ export const els = {
   lastTarget: document.querySelector("#lastTarget"),
   lastQuantity: document.querySelector("#lastQuantity"),
   activeTarget: document.querySelector("#activeTarget"),
+  queueActions: document.querySelector("#queueActions"),
   retryQueueButton: document.querySelector("#retryQueueButton"),
+  clearQueueButton: document.querySelector("#clearQueueButton"),
   queueCount: document.querySelector("#queueCount")
 };
 
@@ -88,10 +90,11 @@ export function updateRecent({ barcode, flavour, target, quantity }) {
 }
 
 export function setQueueCount(count) {
-  if (!els.queueCount || !els.retryQueueButton) return;
+  if (!els.queueCount || !els.retryQueueButton || !els.clearQueueButton || !els.queueActions) return;
   els.queueCount.textContent = String(count);
   els.retryQueueButton.disabled = count === 0;
-  els.retryQueueButton.classList.toggle("hidden", count === 0);
+  els.clearQueueButton.disabled = count === 0;
+  els.queueActions.classList.toggle("hidden", count === 0);
 }
 
 export function selectedTarget() {

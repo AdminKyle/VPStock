@@ -2,7 +2,7 @@ import { CONFIG } from "./config.js";
 import { mark, measure } from "./debug.js";
 import { login, searchProducts, submitScan, updateProductRow, validateSession } from "./api.js";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
+import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
 import { pauseScanner, preloadScannerLibrary, resumeScanner, startScanner, stopScanner } from "./scanner.js";
 import {
   els,
@@ -85,6 +85,14 @@ function toggleQuantitySign() {
 
 function refreshQueueCount() {
   setQueueCount(loadPendingScans().length);
+}
+
+function clearRetryQueue() {
+  const clearedCount = clearPendingScans();
+  refreshQueueCount();
+  setStatus(clearedCount
+    ? `${clearedCount} pending retries cleared. Stock totals were not changed.`
+    : "The retry queue is already empty.", clearedCount ? "warning" : "neutral");
 }
 
 function handleDetectedBarcode(barcode) {
@@ -407,6 +415,7 @@ function bindEvents() {
   });
 
   els.retryQueueButton?.addEventListener("click", retryPendingScans);
+  els.clearQueueButton?.addEventListener("click", clearRetryQueue);
   els.cameraRetryButton?.addEventListener("click", openCameraScanner);
   els.flavourSearchInput?.addEventListener("input", handleFlavourSearch);
   els.quantitySignButton?.addEventListener("click", toggleQuantitySign);
