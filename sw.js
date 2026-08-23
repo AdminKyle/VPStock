@@ -1,8 +1,8 @@
-const CACHE_NAME = "stock-scanner-v19";
+const CACHE_NAME = "stock-scanner-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./src/app.js?v=19",
+  "./src/app.js?v=20",
   "./src/api.js",
   "./src/auth.js",
   "./src/config.js",
@@ -10,7 +10,7 @@ const APP_SHELL = [
   "./src/queue.js",
   "./src/scanner.js",
   "./src/ui.js",
-  "./src/styles.css?v=18",
+  "./src/styles.css?v=20",
   "./public/manifest.webmanifest",
   "./public/icons/icon.svg"
 ];

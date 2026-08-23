@@ -8,6 +8,7 @@ export const els = {
   loginMessage: document.querySelector("#loginMessage"),
   currentUser: document.querySelector("#currentUser"),
   logoutButton: document.querySelector("#logoutButton"),
+  cameraModal: document.querySelector("#cameraModal"),
   cameraPreview: document.querySelector("#cameraPreview"),
   cameraOverlay: document.querySelector("#cameraOverlay"),
   cameraOverlayText: document.querySelector("#cameraOverlayText"),
@@ -19,8 +20,11 @@ export const els = {
   flavourSearchInput: document.querySelector("#flavourSearchInput"),
   flavourResults: document.querySelector("#flavourResults"),
   statusBanner: document.querySelector("#statusBanner"),
+  statusPanel: document.querySelector("#statusPanel"),
+  statusGlyph: document.querySelector("#statusGlyph"),
   lastBarcode: document.querySelector("#lastBarcode"),
   lastTarget: document.querySelector("#lastTarget"),
+  lastQuantity: document.querySelector("#lastQuantity"),
   activeTarget: document.querySelector("#activeTarget"),
   retryQueueButton: document.querySelector("#retryQueueButton"),
   queueCount: document.querySelector("#queueCount")
@@ -29,6 +33,8 @@ export const els = {
 export function showLogin(message = "") {
   els.loginView.classList.remove("hidden");
   els.scannerView.classList.add("hidden");
+  els.cameraModal?.classList.add("hidden");
+  document.body.classList.remove("camera-open");
   setLoginMessage(message);
 }
 
@@ -45,7 +51,12 @@ export function setLoginLoading(isLoading) {
 
 export function setCameraRunning(isRunning) {
   els.startCameraButton.disabled = isRunning;
-  els.stopCameraButton.disabled = !isRunning;
+  els.stopCameraButton.disabled = false;
+}
+
+export function setCameraOpen(isOpen) {
+  els.cameraModal.classList.toggle("hidden", !isOpen);
+  document.body.classList.toggle("camera-open", isOpen);
 }
 
 export function setCameraOverlay(message, type = "neutral", showRetry = false) {
@@ -62,21 +73,25 @@ export function setLoginMessage(message, type = "neutral") {
 export function setStatus(message, type = "neutral") {
   els.statusBanner.textContent = message;
   els.statusBanner.className = `status-banner ${type}`;
+  els.statusPanel.dataset.type = type;
+  els.statusGlyph.textContent = ({ success: "✓", error: "×", warning: "!", working: "…" })[type] || "•";
 }
 
-export function updateRecent({ barcode, flavour, target }) {
+export function updateRecent({ barcode, flavour, target, quantity }) {
   if (flavour || barcode) els.lastBarcode.textContent = flavour || barcode;
   if (target) {
     const label = target === "shelf" ? "Shelf stock" : "Backstock";
     els.lastTarget.textContent = label;
     if (els.activeTarget) els.activeTarget.textContent = label;
   }
+  if (quantity) els.lastQuantity.textContent = `Qty ${quantity > 0 ? "+" : ""}${quantity}`;
 }
 
 export function setQueueCount(count) {
   if (!els.queueCount || !els.retryQueueButton) return;
   els.queueCount.textContent = String(count);
   els.retryQueueButton.disabled = count === 0;
+  els.retryQueueButton.classList.toggle("hidden", count === 0);
 }
 
 export function selectedTarget() {
@@ -121,8 +136,14 @@ export function renderFlavourMessage(message) {
 
 export function clearFlavourResults() {
   if (!els.flavourResults) return;
-  els.flavourResults.innerHTML = "";
-  els.flavourResults.classList.add("hidden");
+  els.flavourResults.innerHTML = `
+    <div class="results-empty-state">
+      <span class="empty-mark" aria-hidden="true">⌕</span>
+      <strong>Quick product lookup</strong>
+      <span>Type above to loosely filter by product or flavour.</span>
+    </div>
+  `;
+  els.flavourResults.classList.remove("hidden");
 }
 
 function escapeHtml(value) {

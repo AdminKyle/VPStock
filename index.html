@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#111827">
+    <meta name="theme-color" content="#07111f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Stock Scanner">
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=18">
+    <link rel="stylesheet" href="./src/styles.css?v=20">
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -40,87 +40,108 @@
       </section>
 
       <section id="scannerView" class="view scanner-view hidden" aria-labelledby="scannerTitle">
-        <header class="top-bar">
-          <div>
-            <p class="eyebrow">Signed in as</p>
-            <h1 id="scannerTitle"><span id="currentUser">Staff</span></h1>
+        <header class="recent-bar">
+          <div class="recent-copy">
+            <p class="section-label">Last scanned</p>
+            <h1 id="scannerTitle"><span id="lastBarcode">No item scanned yet</span></h1>
+            <p class="recent-meta"><span id="lastTarget">Backstock</span><span aria-hidden="true">·</span><span id="lastQuantity">Qty +1</span></p>
           </div>
-          <button id="logoutButton" class="icon-button" type="button" aria-label="Log out" title="Log out">
-            <span aria-hidden="true">↪</span>
+          <button id="logoutButton" class="logout-button" type="button" aria-label="Log out" title="Log out">
+            <span id="currentUser" class="logout-user">Staff</span>
+            <span aria-hidden="true" class="logout-icon">
+              <svg viewBox="0 0 24 24" focusable="false"><path d="M10 17l5-5-5-5M15 12H3m9-9h6a2 2 0 012 2v14a2 2 0 01-2 2h-6"/></svg>
+            </span>
+            <span class="logout-label">Log out</span>
           </button>
         </header>
 
         <main class="scanner-main">
-          <section class="panel quantity-panel" aria-label="Quantity">
-            <label class="field compact-field">
-              <span>Quantity</span>
+          <section class="next-scan-grid" aria-label="Next scan settings">
+            <fieldset class="mode-switch" aria-label="Stock location">
+              <legend>Location</legend>
+              <div class="segmented-control">
+                <label>
+                  <input type="radio" name="targetMode" value="backstock" checked>
+                  <span>Back</span>
+                </label>
+                <label>
+                  <input type="radio" name="targetMode" value="shelf">
+                  <span>Shelf</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="quantity-card">
+              <label class="control-label" for="quantityInput">Next quantity</label>
               <span class="quantity-control">
-                <button id="quantitySignButton" class="quantity-sign-button" type="button" aria-label="Toggle quantity sign" title="Toggle add or deduct">+/-</button>
-                <input id="quantityInput" name="quantity" type="number" inputmode="numeric" step="1" value="1">
+                <button id="quantitySignButton" class="quantity-sign-button" type="button" aria-label="Toggle between adding and deducting stock" title="Toggle add or deduct">+</button>
+                <input id="quantityInput" name="quantity" type="number" inputmode="numeric" step="1" value="1" aria-label="Next scan quantity">
               </span>
-            </label>
-          </section>
-
-          <fieldset class="mode-switch" aria-label="Scan target">
-            <label>
-              <input type="radio" name="targetMode" value="backstock" checked>
-              <span>Backstock</span>
-            </label>
-            <label>
-              <input type="radio" name="targetMode" value="shelf">
-              <span>Shelf stock</span>
-            </label>
-          </fieldset>
-
-          <section class="camera-panel" aria-label="Camera scanner">
-            <div id="cameraPreview" class="camera-preview"></div>
-            <div class="scan-frame" aria-hidden="true"></div>
-            <div id="cameraOverlay" class="camera-overlay" data-type="neutral">
-              <span id="cameraOverlayText">Camera ready</span>
-              <button id="cameraRetryButton" class="camera-retry-button hidden" type="button">Try Again</button>
             </div>
           </section>
 
-          <div class="scanner-actions">
-            <button id="startCameraButton" class="secondary-button" type="button">Start camera</button>
-            <button id="stopCameraButton" class="ghost-button" type="button" disabled>Stop</button>
-          </div>
-
-          <section class="panel form-stack">
-            <div class="active-mode">Next update: <strong id="activeTarget">Backstock</strong></div>
+          <section class="search-panel" aria-labelledby="flavourSearchTitle">
+            <div class="search-field-wrap">
+              <svg aria-hidden="true" class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+              <label class="sr-only" for="flavourSearchInput" id="flavourSearchTitle">Find a product</label>
+              <input id="flavourSearchInput" name="flavourSearch" autocomplete="off" inputmode="search" placeholder="Find a product or flavour" spellcheck="false">
+              <kbd>Search</kbd>
+            </div>
+            <div id="flavourResults" class="search-results" aria-live="polite">
+              <div class="results-empty-state">
+                <span class="empty-mark" aria-hidden="true">⌕</span>
+                <strong>Quick product lookup</strong>
+                <span>Type above to loosely filter by product or flavour.</span>
+              </div>
+            </div>
           </section>
 
-          <section class="panel form-stack search-panel" aria-labelledby="flavourSearchTitle">
-            <h2 id="flavourSearchTitle">Search flavour</h2>
-            <label class="field">
-              <span>Flavour in MASTER_DB column E</span>
-              <input id="flavourSearchInput" name="flavourSearch" autocomplete="off" inputmode="search" placeholder="Type flavour name">
-            </label>
-            <div id="flavourResults" class="search-results hidden"></div>
+          <section id="statusPanel" class="status-panel" data-type="neutral" aria-label="Scan result">
+            <div id="statusGlyph" class="status-glyph" aria-hidden="true">•</div>
+            <div class="status-copy">
+              <p class="section-label">Scanner status</p>
+              <div id="statusBanner" class="status-banner neutral" role="status" aria-live="polite">Ready for the next scan.</div>
+            </div>
+            <button id="retryQueueButton" class="queue-button hidden" type="button" disabled>
+              Retry <span id="queueCount">0</span>
+            </button>
           </section>
-          <button id="retryQueueButton" class="ghost-button queue-button" type="button" disabled>
-            Retry pending scans (<span id="queueCount">0</span>)
+
+          <button id="startCameraButton" class="camera-launch-button" type="button">
+            <span class="camera-launch-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h3l1.4-2h7.2L17 7h3a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V9a2 2 0 012-2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </span>
+            <span class="camera-launch-copy">
+              <strong>Open scanner</strong>
+              <small>Full-screen camera</small>
+            </span>
+            <span class="camera-launch-arrow" aria-hidden="true">›</span>
           </button>
-
-          <section class="status-panel" aria-labelledby="recentScanTitle">
-            <h2 id="recentScanTitle">Recent scan</h2>
-            <div id="statusBanner" class="status-banner neutral" role="status" aria-live="polite">
-              Waiting for a scan.
-            </div>
-            <dl class="scan-details">
-              <div>
-                <dt>Flavour</dt>
-                <dd id="lastBarcode">None</dd>
-              </div>
-              <div>
-                <dt>Target</dt>
-                <dd id="lastTarget">Backstock</dd>
-              </div>
-            </dl>
-          </section>
         </main>
+
+        <section id="cameraModal" class="camera-modal hidden" aria-label="Full-screen barcode scanner">
+          <header class="camera-modal-header">
+            <div>
+              <p class="section-label">Scanning to <span id="activeTarget">Backstock</span></p>
+              <strong>Position barcode in frame</strong>
+            </div>
+            <button id="stopCameraButton" class="camera-close-button" type="button" aria-label="Close camera">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </header>
+          <div class="camera-panel">
+            <div id="cameraPreview" class="camera-preview"></div>
+            <div class="camera-vignette" aria-hidden="true"></div>
+            <div class="scan-frame" aria-hidden="true"><span></span></div>
+            <div id="cameraOverlay" class="camera-overlay" data-type="neutral">
+              <span id="cameraOverlayText">Starting camera…</span>
+              <button id="cameraRetryButton" class="camera-retry-button hidden" type="button">Try again</button>
+            </div>
+          </div>
+          <footer class="camera-modal-footer">Keep the device steady. Scans submit automatically.</footer>
+        </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=19"></script>
+    <script type="module" src="./src/app.js?v=20"></script>
   </body>
 </html>

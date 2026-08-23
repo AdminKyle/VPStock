@@ -11,6 +11,7 @@ import {
   renderFlavourMessage,
   selectedTarget,
   setCameraOverlay,
+  setCameraOpen,
   setCameraRunning,
   setLoginLoading,
   setQueueCount,
@@ -66,6 +67,7 @@ function readQuantity() {
 function syncQuantitySignButton() {
   const isDeduct = String(els.quantityInput.value || "").trim().startsWith("-");
   els.quantitySignButton.dataset.mode = isDeduct ? "deduct" : "add";
+  els.quantitySignButton.textContent = isDeduct ? "−" : "+";
 }
 
 function toggleQuantitySign() {
@@ -104,6 +106,33 @@ function resumeCameraSoon(message = "Point the camera at a barcode.", delay = 14
   resumeTimer = window.setTimeout(() => resumeCameraScanning(message), delay);
 }
 
+async function openCameraScanner() {
+  setCameraOpen(true);
+  setCameraOverlay("Starting camera…", "working", false);
+  try {
+    await startScanner(
+      els.cameraPreview,
+      handleDetectedBarcode,
+      handleCameraStatus
+    );
+    setCameraRunning(true);
+    setCameraOverlay("Point the camera at a barcode.", "neutral", false);
+  } catch (error) {
+    setCameraRunning(false);
+    const message = error.message || "Camera unavailable. Chrome did not provide an error reason.";
+    setCameraOverlay(message, "error", true);
+    setStatus(message, "error");
+  }
+}
+
+function closeCameraScanner() {
+  window.clearTimeout(resumeTimer);
+  stopScanner();
+  setCameraRunning(false);
+  setCameraOverlay("Camera stopped", "neutral", false);
+  setCameraOpen(false);
+}
+
 async function restoreSession() {
   mark("app:restore-session:start");
   const stored = loadSession();
@@ -115,7 +144,7 @@ async function restoreSession() {
 
   session = stored;
   showScanner(session);
-  setStatus("Ready to scan. Checking saved session in the background...", "success");
+  setStatus("Ready to scan. Checking saved session in the background...");
   preloadScannerLibrary().catch(() => {});
   measure("app:scanner-visible", "app:restore-session:start");
 
@@ -126,12 +155,13 @@ async function restoreSession() {
     .then((validated) => {
       session = saveSession({ ...stored, ...validated.session, lastValidatedAt: Date.now() });
       showScanner(session);
-      setStatus("Ready to scan.", "success");
+      setStatus("Ready for the next scan.");
     })
     .catch((error) => {
       clearSession();
       session = null;
       stopScanner();
+      setCameraRunning(false);
       showLogin(error.message || "Please log in again.");
     });
 }
@@ -154,7 +184,7 @@ async function handleLogin(event) {
     session = saveSession({ ...result.session, lastValidatedAt: Date.now() });
     els.pinInput.value = "";
     showScanner(session);
-    setStatus("Ready to scan.", "success");
+    setStatus("Ready for the next scan.");
     preloadScannerLibrary().catch(() => {});
     measure("login:complete", "login:start");
   } catch (error) {
@@ -197,7 +227,7 @@ async function handleSubmit(barcodeFromScanner = "") {
   }
 
   if (isDuplicate(barcode)) {
-    updateRecent({ barcode, target });
+    updateRecent({ barcode, target, quantity });
     setCameraOverlay("Duplicate scan ignored.", "warning", false);
     setStatus("Duplicate scan ignored. Wait a moment before scanning it again.", "warning");
     resumeCameraSoon();
@@ -206,7 +236,7 @@ async function handleSubmit(barcodeFromScanner = "") {
 
   if (!navigator.onLine) {
     const queued = queueScan({ barcode, target, quantity, username: session.username });
-    updateRecent({ barcode, target });
+    updateRecent({ barcode, target, quantity });
     refreshQueueCount();
     setCameraOverlay(`Queued ${queued.barcode}.`, "warning", false);
     setStatus(`Offline. Scan queued for manual retry (${queued.barcode}).`, "warning");
@@ -214,17 +244,17 @@ async function handleSubmit(barcodeFromScanner = "") {
     return;
   }
 
-  updateRecent({ target });
+  updateRecent({ target, quantity });
   isSubmitting = true;
   setCameraOverlay(`Submitting ${barcode}...`, "working", false);
-  setStatus(`Submitting ${barcode} to ${targetLabel(target)}...`);
+  setStatus(`Submitting ${barcode} to ${targetLabel(target)}...`, "working");
   mark("scan-submit:start");
 
   try {
     const result = await submitScan({ session, barcode, target, quantity });
     const flavour = result.product?.flavour || result.product?.productType || barcode;
     const action = quantity < 0 ? "Deducted" : "Successfully Added";
-    updateRecent({ flavour, barcode, target });
+    updateRecent({ flavour, barcode, target, quantity });
     setCameraOverlay(`${action} ${Math.abs(quantity)} to ${targetLabel(target)}.`, "success", false);
     setStatus(result.message || `${targetLabel(target)} updated.`, "success");
     measure("scan-submit:confirmed", "scan-submit:start");
@@ -259,7 +289,7 @@ async function retryPendingScans() {
   if (!pending.length) return;
 
   els.retryQueueButton.disabled = true;
-  setStatus(`Retrying ${pending.length} pending scan(s)...`);
+  setStatus(`Retrying ${pending.length} pending scan(s)...`, "working");
   for (const scan of pending) {
     try {
       await submitScan({ session, barcode: scan.barcode, target: scan.target, quantity: scan.quantity });
@@ -326,8 +356,8 @@ async function handleProductSelect(product) {
   }
 
   isSubmitting = true;
-  updateRecent({ flavour: product.flavour || product.productType || product.sku || `Row ${product.row}`, target });
-  setStatus(`Updating ${product.flavour || "selected product"} to ${targetLabel(target)}...`);
+  updateRecent({ flavour: product.flavour || product.productType || product.sku || `Row ${product.row}`, target, quantity });
+  setStatus(`Updating ${product.flavour || "selected product"} to ${targetLabel(target)}...`, "working");
   mark("row-update:start");
 
   try {
@@ -346,29 +376,9 @@ async function handleProductSelect(product) {
 function bindEvents() {
   els.loginForm.addEventListener("submit", handleLogin);
 
-  els.startCameraButton.addEventListener("click", async () => {
-    try {
-      await startScanner(
-        els.cameraPreview,
-        handleDetectedBarcode,
-        handleCameraStatus
-      );
-      setCameraRunning(true);
-      setCameraOverlay("Point the camera at a barcode.", "neutral", false);
-    } catch (error) {
-      setCameraRunning(false);
-      const message = error.message || "Camera unavailable. Chrome did not provide an error reason.";
-      setCameraOverlay(message, "error", true);
-      setStatus(message, "error");
-    }
-  });
+  els.startCameraButton.addEventListener("click", openCameraScanner);
 
-  els.stopCameraButton.addEventListener("click", () => {
-    window.clearTimeout(resumeTimer);
-    stopScanner();
-    setCameraRunning(false);
-    setCameraOverlay("Camera stopped", "neutral", false);
-  });
+  els.stopCameraButton.addEventListener("click", closeCameraScanner);
 
   els.logoutButton.addEventListener("click", () => {
     window.clearTimeout(resumeTimer);
@@ -376,6 +386,7 @@ function bindEvents() {
     clearSession();
     session = null;
     setCameraRunning(false);
+    setCameraOpen(false);
     showLogin("Logged out.");
   });
 
@@ -384,13 +395,16 @@ function bindEvents() {
   });
 
   els.retryQueueButton?.addEventListener("click", retryPendingScans);
-  els.cameraRetryButton?.addEventListener("click", () => resumeCameraScanning());
+  els.cameraRetryButton?.addEventListener("click", openCameraScanner);
   els.flavourSearchInput?.addEventListener("input", handleFlavourSearch);
   els.quantitySignButton?.addEventListener("click", toggleQuantitySign);
   els.quantityInput?.addEventListener("input", syncQuantitySignButton);
 
   window.addEventListener("online", () => setStatus("Back online. Ready to submit scans.", "success"));
   window.addEventListener("offline", () => setStatus("Offline. The app opens, but scans cannot be submitted.", "warning"));
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.cameraModal.classList.contains("hidden")) closeCameraScanner();
+  });
 }
 
 async function registerServiceWorker() {
