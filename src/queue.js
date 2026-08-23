@@ -2,10 +2,22 @@ import { CONFIG } from "./config.js";
 
 export function loadPendingScans() {
   try {
-    return JSON.parse(localStorage.getItem(CONFIG.PENDING_QUEUE_KEY) || "[]");
+    const pending = JSON.parse(localStorage.getItem(CONFIG.PENDING_QUEUE_KEY) || "[]");
+    return Array.isArray(pending) ? pending : [];
   } catch {
     return [];
   }
+}
+
+export function migratePendingQueue() {
+  const versionKey = `${CONFIG.PENDING_QUEUE_KEY}-version`;
+  const currentVersion = Number(localStorage.getItem(versionKey) || 0);
+  if (currentVersion >= CONFIG.PENDING_QUEUE_VERSION) return 0;
+
+  const clearedCount = loadPendingScans().length;
+  localStorage.removeItem(CONFIG.PENDING_QUEUE_KEY);
+  localStorage.setItem(versionKey, String(CONFIG.PENDING_QUEUE_VERSION));
+  return clearedCount;
 }
 
 export function queueScan(scan) {
@@ -24,4 +36,10 @@ export function removePendingScan(id) {
   const pending = loadPendingScans().filter((scan) => scan.id !== id);
   localStorage.setItem(CONFIG.PENDING_QUEUE_KEY, JSON.stringify(pending));
   return pending;
+}
+
+export function clearPendingScans() {
+  const clearedCount = loadPendingScans().length;
+  localStorage.removeItem(CONFIG.PENDING_QUEUE_KEY);
+  return clearedCount;
 }

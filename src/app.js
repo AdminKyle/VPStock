@@ -2,7 +2,7 @@ import { CONFIG } from "./config.js";
 import { mark, measure } from "./debug.js";
 import { login, searchProducts, submitScan, updateProductRow, validateSession } from "./api.js";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { loadPendingScans, queueScan, removePendingScan } from "./queue.js";
+import { loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
 import { pauseScanner, preloadScannerLibrary, resumeScanner, startScanner, stopScanner } from "./scanner.js";
 import {
   els,
@@ -104,6 +104,10 @@ function resumeCameraScanning(message = "Point the camera at a barcode.") {
 function resumeCameraSoon(message = "Point the camera at a barcode.", delay = 1400) {
   window.clearTimeout(resumeTimer);
   resumeTimer = window.setTimeout(() => resumeCameraScanning(message), delay);
+}
+
+function isPermanentScanRejection(error) {
+  return /barcode not found|invalid barcode|barcode is too|unsupported characters|invalid scan target|quantity cannot|whole quantity/i.test(error?.message || "");
 }
 
 async function openCameraScanner() {
@@ -260,12 +264,10 @@ async function handleSubmit(barcodeFromScanner = "") {
     measure("scan-submit:confirmed", "scan-submit:start");
     resumeCameraSoon();
   } catch (error) {
-    if (!navigator.onLine || /timed out|failed/i.test(error.message)) {
-      queueScan({ barcode, target, quantity, username: session.username });
-      refreshQueueCount();
-      setCameraOverlay("Connection issue. Scan queued.", "warning", false);
-      setStatus(`${error.message} Scan queued for manual retry.`, "warning");
-      resumeCameraSoon();
+    if (error.retryable) {
+      const message = `${error.message} This scan was not queued because the update result may be uncertain. Check stock before scanning it again.`;
+      setCameraOverlay("Connection issue. Check stock before retrying.", "warning", true);
+      setStatus(message, "warning");
     } else {
       setCameraOverlay(error.message, "error", true);
       setStatus(error.message, "error");
@@ -290,17 +292,27 @@ async function retryPendingScans() {
 
   els.retryQueueButton.disabled = true;
   setStatus(`Retrying ${pending.length} pending scan(s)...`, "working");
+  let discardedCount = 0;
   for (const scan of pending) {
     try {
       await submitScan({ session, barcode: scan.barcode, target: scan.target, quantity: scan.quantity });
       removePendingScan(scan.id);
     } catch (error) {
+      if (isPermanentScanRejection(error)) {
+        removePendingScan(scan.id);
+        discardedCount += 1;
+        continue;
+      }
       setStatus(`Retry stopped: ${error.message}`, "error");
       break;
     }
   }
   refreshQueueCount();
-  if (loadPendingScans().length === 0) setStatus("Pending scans submitted.", "success");
+  if (loadPendingScans().length === 0) {
+    setStatus(discardedCount
+      ? `Retry queue cleared. ${discardedCount} rejected scan(s) were discarded without changing stock.`
+      : "Pending scans submitted.", discardedCount ? "warning" : "success");
+  }
 }
 
 async function handleFlavourSearch() {
@@ -432,6 +444,7 @@ async function registerServiceWorker() {
 bindEvents();
 syncQuantitySignButton();
 registerServiceWorker();
+migratePendingQueue();
 refreshQueueCount();
 mark("app:load");
 restoreSession();

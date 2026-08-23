@@ -7,6 +7,12 @@ function requireEndpoint() {
   }
 }
 
+function requestError(message, retryable = false) {
+  const error = new Error(message);
+  error.retryable = retryable;
+  return error;
+}
+
 function requestJsonp(action, payload = {}) {
   requireEndpoint();
   return new Promise((resolve, reject) => {
@@ -23,7 +29,7 @@ function requestJsonp(action, payload = {}) {
     const script = document.createElement("script");
     const timeoutId = window.setTimeout(() => {
       cleanup();
-      reject(new Error("Apps Script request timed out."));
+      reject(requestError("Apps Script request timed out.", true));
     }, CONFIG.REQUEST_TIMEOUT_MS);
 
     function cleanup() {
@@ -36,7 +42,7 @@ function requestJsonp(action, payload = {}) {
       cleanup();
       measure(`${action}:response`, `${action}:request:start`);
       if (data?.ok === false || data?.success === false) {
-        reject(new Error(data.error || data.message || "Request failed."));
+        reject(requestError(data.error || data.message || "Request rejected."));
         return;
       }
       resolve(data);
@@ -45,7 +51,7 @@ function requestJsonp(action, payload = {}) {
     script.onerror = () => {
       cleanup();
       measure(`${action}:failed`, `${action}:request:start`);
-      reject(new Error("Apps Script request failed. Check the deployment URL and access settings."));
+      reject(requestError("Apps Script request failed. Check the deployment URL and access settings.", true));
     };
 
     script.src = url.toString();
