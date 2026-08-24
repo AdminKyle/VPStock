@@ -119,7 +119,7 @@ export function renderFlavourResults(products, onSelect) {
     button.className = "result-item";
     button.setAttribute("role", "option");
     button.innerHTML = `
-      <span class="result-title">${escapeHtml(product.flavour || product.productType || "Unnamed product")}</span>
+      <span class="result-title">${escapeHtml(product.displayName || product.flavour || product.productType || "Unnamed product")}</span>
       <span class="result-meta">${escapeHtml(product.brand || "")} ${escapeHtml(product.sku ? `SKU ${product.sku}` : "")}</span>
       <span class="result-stock">Shelf ${Number(product.shelfStock) || 0} / Back ${Number(product.backstock) || 0} / Total ${Number(product.totalQty) || 0}</span>
     `;

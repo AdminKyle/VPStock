@@ -1,7 +1,8 @@
-import { CONFIG } from "./config.js";
+import { CONFIG } from "./config.js?v=24";
 import { mark, measure } from "./debug.js";
-import { login, searchProducts, submitScan, updateProductRow, validateSession } from "./api.js";
+import { getAllProducts, login, submitScan, updateProductRow, validateSession } from "./api.js?v=24";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=24";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
 import { pauseScanner, preloadScannerLibrary, resumeScanner, startScanner, stopScanner } from "./scanner.js";
 import {
@@ -20,13 +21,113 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js";
+} from "./ui.js?v=24";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
 let isSubmitting = false;
 let searchTimer = 0;
 let resumeTimer = 0;
+let searchGeneration = 0;
+let productCatalog = [];
+let productCatalogLoadedAt = 0;
+let productCatalogPromise = null;
+let productCatalogCacheRead = false;
+let catalogSaveTimer = 0;
+const productCatalogOverrides = new Map();
+
+function readCachedProductCatalog() {
+  if (productCatalogCacheRead) return productCatalog;
+  productCatalogCacheRead = true;
+
+  try {
+    const cached = JSON.parse(localStorage.getItem(CONFIG.PRODUCT_CATALOG_CACHE_KEY) || "null");
+    if (Array.isArray(cached?.products)) {
+      productCatalog = prepareProducts(cached.products);
+      productCatalogLoadedAt = Number(cached.savedAt || 0);
+    }
+  } catch {
+    try {
+      localStorage.removeItem(CONFIG.PRODUCT_CATALOG_CACHE_KEY);
+    } catch {
+      // Continue with memory-only search when browser storage is unavailable.
+    }
+  }
+  return productCatalog;
+}
+
+function saveProductCatalog() {
+  window.clearTimeout(catalogSaveTimer);
+  catalogSaveTimer = window.setTimeout(() => {
+    try {
+      const products = productCatalog.map((product) => {
+        const cleanProduct = { ...product };
+        delete cleanProduct._searchPrimary;
+        delete cleanProduct._searchBarcode;
+        delete cleanProduct._searchSku;
+        delete cleanProduct._searchFields;
+        delete cleanProduct._searchText;
+        return cleanProduct;
+      });
+      localStorage.setItem(CONFIG.PRODUCT_CATALOG_CACHE_KEY, JSON.stringify({
+        savedAt: productCatalogLoadedAt,
+        products
+      }));
+    } catch {
+      // Memory search remains available if browser storage is full or disabled.
+    }
+  }, 80);
+}
+
+function catalogIsFresh() {
+  return productCatalog.length > 0
+    && Date.now() - productCatalogLoadedAt < CONFIG.PRODUCT_CATALOG_TTL_MS;
+}
+
+async function refreshProductCatalog({ force = false } = {}) {
+  readCachedProductCatalog();
+  if (!force && catalogIsFresh()) return productCatalog;
+  if (productCatalogPromise) return productCatalogPromise;
+  if (!navigator.onLine) {
+    if (productCatalog.length) return productCatalog;
+    throw new Error("Product search is unavailable offline until the catalogue has loaded once.");
+  }
+
+  mark("product-catalog:start");
+  productCatalogPromise = getAllProducts(session)
+    .then((result) => {
+      productCatalog = prepareProducts(result.products || []);
+      productCatalogOverrides.forEach((updatedProduct, row) => {
+        const index = productCatalog.findIndex((product) => Number(product.row) === Number(row));
+        if (index >= 0) productCatalog[index] = updatedProduct;
+      });
+      productCatalogLoadedAt = Date.now();
+      saveProductCatalog();
+      measure("product-catalog:ready", "product-catalog:start");
+      return productCatalog;
+    })
+    .finally(() => {
+      productCatalogPromise = null;
+    });
+
+  return productCatalogPromise;
+}
+
+function warmProductCatalog() {
+  readCachedProductCatalog();
+  if (!catalogIsFresh()) refreshProductCatalog().catch(() => {});
+}
+
+function updateProductCatalog(updatedProduct) {
+  if (!updatedProduct?.row) return;
+  readCachedProductCatalog();
+  const prepared = prepareProducts([updatedProduct])[0];
+  productCatalogOverrides.set(Number(updatedProduct.row), prepared);
+  if (!productCatalog.length) return;
+  const index = productCatalog.findIndex((product) => Number(product.row) === Number(updatedProduct.row));
+  if (index >= 0) productCatalog[index] = prepared;
+  saveProductCatalog();
+}
 
 function cleanBarcode(value) {
   return String(value || "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
@@ -158,6 +259,7 @@ async function restoreSession() {
   showScanner(session);
   setStatus("Ready to scan. Checking saved session in the background...");
   preloadScannerLibrary().catch(() => {});
+  warmProductCatalog();
   measure("app:scanner-visible", "app:restore-session:start");
 
   const lastValidated = Number(stored.lastValidatedAt || 0);
@@ -198,6 +300,7 @@ async function handleLogin(event) {
     showScanner(session);
     setStatus("Ready for the next scan.");
     preloadScannerLibrary().catch(() => {});
+    warmProductCatalog();
     measure("login:complete", "login:start");
   } catch (error) {
     setLoginMessage(error.message, "error");
@@ -264,7 +367,8 @@ async function handleSubmit(barcodeFromScanner = "") {
 
   try {
     const result = await submitScan({ session, barcode, target, quantity });
-    const flavour = result.product?.flavour || result.product?.productType || barcode;
+    updateProductCatalog(result.product);
+    const flavour = result.product ? formatProductName(result.product) : barcode;
     const action = quantity < 0 ? "Deducted" : "Successfully Added";
     updateRecent({ flavour, barcode, target, quantity });
     setCameraOverlay(`${action} ${Math.abs(quantity)} to ${targetLabel(target)}.`, "success", false);
@@ -326,34 +430,42 @@ async function retryPendingScans() {
 async function handleFlavourSearch() {
   const query = els.flavourSearchInput.value.trim();
   window.clearTimeout(searchTimer);
+  const generation = ++searchGeneration;
 
   if (!query) {
     clearFlavourResults();
     return;
   }
 
-  renderFlavourMessage("Searching...");
+  readCachedProductCatalog();
+  if (!productCatalog.length) renderFlavourMessage("Preparing product catalogue...");
 
   searchTimer = window.setTimeout(async () => {
     if (!session) {
       showLogin("Please log in before searching flavours.");
       return;
     }
-    if (!navigator.onLine) {
-      setStatus("Offline. Flavour search needs an internet connection.", "warning");
-      return;
-    }
-
     mark("flavour-search:start");
     try {
-      const result = await searchProducts(session, query);
-      renderFlavourResults(result.products || [], handleProductSelect);
+      const products = productCatalog.length ? productCatalog : await refreshProductCatalog();
+      if (generation !== searchGeneration || els.flavourSearchInput.value.trim() !== query) return;
+      renderFlavourResults(filterProducts(products, query), handleProductSelect);
       measure("flavour-search:results", "flavour-search:start");
+
+      if (!catalogIsFresh() && navigator.onLine) {
+        refreshProductCatalog()
+          .then((freshProducts) => {
+            if (generation !== searchGeneration || els.flavourSearchInput.value.trim() !== query) return;
+            renderFlavourResults(filterProducts(freshProducts, query), handleProductSelect);
+          })
+          .catch(() => {});
+      }
     } catch (error) {
+      if (generation !== searchGeneration) return;
       renderFlavourMessage(error.message);
       setStatus(error.message, "error");
     }
-  }, 180);
+  }, 35);
 }
 
 async function handleProductSelect(product) {
@@ -376,12 +488,14 @@ async function handleProductSelect(product) {
   }
 
   isSubmitting = true;
-  updateRecent({ flavour: product.flavour || product.productType || product.sku || `Row ${product.row}`, target, quantity });
-  setStatus(`Updating ${product.flavour || "selected product"} to ${targetLabel(target)}...`, "working");
+  const productName = product.displayName || formatProductName(product);
+  updateRecent({ flavour: productName || product.sku || `Row ${product.row}`, target, quantity });
+  setStatus(`Updating ${productName || "selected product"} to ${targetLabel(target)}...`, "working");
   mark("row-update:start");
 
   try {
     const result = await updateProductRow({ session, row: product.row, target, quantity });
+    updateProductCatalog(result.product);
     setStatus(result.message || `${targetLabel(target)} updated.`, "success");
     els.flavourSearchInput.value = "";
     clearFlavourResults();
@@ -405,6 +519,7 @@ function bindEvents() {
     stopScanner();
     clearSession();
     session = null;
+    searchGeneration += 1;
     setCameraRunning(false);
     setCameraOpen(false);
     showLogin("Logged out.");

@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js";
+import { CONFIG } from "./config.js?v=24";
 import { mark, measure } from "./debug.js";
 
 function requireEndpoint() {
@@ -13,7 +13,7 @@ function requestError(message, retryable = false) {
   return error;
 }
 
-function requestJsonp(action, payload = {}) {
+function requestJsonp(action, payload = {}, timeoutMs = CONFIG.REQUEST_TIMEOUT_MS) {
   requireEndpoint();
   return new Promise((resolve, reject) => {
     mark(`${action}:request:start`);
@@ -30,7 +30,7 @@ function requestJsonp(action, payload = {}) {
     const timeoutId = window.setTimeout(() => {
       cleanup();
       reject(requestError("Apps Script request timed out.", true));
-    }, CONFIG.REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
 
     function cleanup() {
       window.clearTimeout(timeoutId);
@@ -68,6 +68,13 @@ export function validateSession(session) {
     token: session?.token,
     username: session?.username
   });
+}
+
+export function getAllProducts(session) {
+  return requestJsonp("getAllProducts", {
+    token: session?.token,
+    username: session?.username
+  }, CONFIG.CATALOG_REQUEST_TIMEOUT_MS);
 }
 
 export function submitScan({ session, barcode, target, quantity }) {
