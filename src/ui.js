@@ -13,6 +13,7 @@ export const els = {
   cameraOverlay: document.querySelector("#cameraOverlay"),
   cameraOverlayText: document.querySelector("#cameraOverlayText"),
   cameraRetryButton: document.querySelector("#cameraRetryButton"),
+  refocusCameraButton: document.querySelector("#refocusCameraButton"),
   startCameraButton: document.querySelector("#startCameraButton"),
   stopCameraButton: document.querySelector("#stopCameraButton"),
   quantityInput: document.querySelector("#quantityInput"),
@@ -54,6 +55,7 @@ export function setLoginLoading(isLoading) {
 export function setCameraRunning(isRunning) {
   els.startCameraButton.disabled = isRunning;
   els.stopCameraButton.disabled = false;
+  if (els.refocusCameraButton) els.refocusCameraButton.disabled = !isRunning;
 }
 
 export function setCameraOpen(isOpen) {

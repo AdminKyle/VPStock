@@ -831,6 +831,40 @@ p {
   color: var(--accent);
 }
 
+.camera-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.camera-focus-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.camera-focus-button:disabled {
+  opacity: .45;
+}
+
+.camera-focus-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .camera-close-button {
   display: grid;
   width: 46px;

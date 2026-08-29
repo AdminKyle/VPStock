@@ -10,7 +10,7 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=22">
+    <link rel="stylesheet" href="./src/styles.css?v=25">
     <script>
       (() => {
         try {
@@ -142,9 +142,15 @@
               <p class="section-label">Scanning to <span id="activeTarget">Backstock</span></p>
               <strong>Position barcode in frame</strong>
             </div>
-            <button id="stopCameraButton" class="camera-close-button" type="button" aria-label="Close camera">
-              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
-            </button>
+            <div class="camera-header-actions">
+              <button id="refocusCameraButton" class="camera-focus-button" type="button" disabled>
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M9 12h6"/></svg>
+                <span>Refocus</span>
+              </button>
+              <button id="stopCameraButton" class="camera-close-button" type="button" aria-label="Close camera">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              </button>
+            </div>
           </header>
           <div class="camera-panel">
             <div id="cameraPreview" class="camera-preview"></div>
@@ -159,6 +165,6 @@
         </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=24"></script>
+    <script type="module" src="./src/app.js?v=25"></script>
   </body>
 </html>

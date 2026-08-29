@@ -4,7 +4,7 @@ import { getAllProducts, login, submitScan, updateProductRow, validateSession } 
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
 import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=24";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, resumeScanner, startScanner, stopScanner } from "./scanner.js";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=25";
 import {
   els,
   clearFlavourResults,
@@ -232,9 +232,38 @@ async function openCameraScanner() {
     setCameraOverlay("Point the camera at a barcode.", "neutral", false);
   } catch (error) {
     setCameraRunning(false);
-    const message = error.message || "Camera unavailable. Chrome did not provide an error reason.";
+    const message = error.message || "Camera unavailable. The browser did not provide an error reason.";
     setCameraOverlay(message, "error", true);
     setStatus(message, "error");
+  }
+}
+
+async function handleCameraRefocus() {
+  if (els.refocusCameraButton?.disabled) return;
+  els.refocusCameraButton.disabled = true;
+  setCameraOverlay("Refocusing camera…", "working", false);
+  let cameraReady = true;
+
+  try {
+    const focused = await refocusScanner();
+    if (focused) {
+      setCameraOverlay("Focus refreshed. Point at a barcode.", "neutral", false);
+      return;
+    }
+
+    setCameraOverlay("Restarting camera to refresh focus…", "working", false);
+    await startScanner(els.cameraPreview, handleDetectedBarcode, handleCameraStatus);
+    setCameraOverlay("Focus refreshed. Point at a barcode.", "neutral", false);
+  } catch (error) {
+    cameraReady = false;
+    setCameraRunning(false);
+    const message = error.message || "Could not refresh camera focus.";
+    setCameraOverlay(message, "error", true);
+    setStatus(message, "error");
+  } finally {
+    if (!els.cameraModal.classList.contains("hidden")) {
+      els.refocusCameraButton.disabled = !cameraReady;
+    }
   }
 }
 
@@ -513,6 +542,7 @@ function bindEvents() {
   els.startCameraButton.addEventListener("click", openCameraScanner);
 
   els.stopCameraButton.addEventListener("click", closeCameraScanner);
+  els.refocusCameraButton?.addEventListener("click", handleCameraRefocus);
 
   els.logoutButton.addEventListener("click", () => {
     window.clearTimeout(resumeTimer);

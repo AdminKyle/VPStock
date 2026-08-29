@@ -50,7 +50,9 @@ If you want to keep the old Apps Script-hosted page temporarily, leave its `Inde
 - Login controlled by the Google Sheet `Users` tab.
 - Server-side session token validation in Apps Script.
 - Fast returning-session restore with background validation.
-- Rear-camera barcode scanning using Chrome `BarcodeDetector`, with `html5-qrcode` fallback.
+- Rear-camera barcode scanning using `BarcodeDetector` when available, with `html5-qrcode` fallback.
+- Preferred HD camera capture, capability-aware continuous autofocus, and manual refocus with a safe camera-restart fallback.
+- Responsive wide decoding region aligned to the on-screen frame for improved small 1D barcode capture.
 - Manual barcode/SKU fallback.
 - Flavour search against `MASTER_DB` column E, with row-based stock update.
 - Backstock / Shelf stock selector before submitting.

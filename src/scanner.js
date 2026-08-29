@@ -12,6 +12,7 @@ let isPaused = false;
 
 const SCAN_COOLDOWN_MS = 1400;
 const DETECT_INTERVAL_MS = 180;
+const REFOCUS_SETTLE_MS = 450;
 const BARCODE_FORMATS = [
   "ean_13",
   "ean_8",
@@ -25,18 +26,27 @@ const BARCODE_FORMATS = [
   "qr_code"
 ];
 
+const PREFERRED_VIDEO_CONSTRAINTS = {
+  facingMode: "environment",
+  width: { ideal: 1920 },
+  height: { ideal: 1080 },
+  frameRate: { ideal: 30 }
+};
+
 const CAMERA_ATTEMPTS = [
-  { video: { facingMode: { exact: "environment" } }, audio: false },
+  { video: { ...PREFERRED_VIDEO_CONSTRAINTS, facingMode: { exact: "environment" } }, audio: false },
+  { video: PREFERRED_VIDEO_CONSTRAINTS, audio: false },
+  { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
   { video: { facingMode: "environment" }, audio: false },
-  { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
   { video: true, audio: false }
 ];
 
 const HTML5_QRCODE_CONFIG = {
-  fps: 10,
-  qrbox: { width: 250, height: 250 },
+  fps: 12,
+  qrbox: barcodeScanRegion,
   aspectRatio: 1.333,
-  disableFlip: true
+  disableFlip: true,
+  videoConstraints: PREFERRED_VIDEO_CONSTRAINTS
 };
 
 export function preloadScannerLibrary() {
@@ -53,7 +63,7 @@ export function preloadScannerLibrary() {
 
 export async function startScanner(containerElement, onScan, onStatus) {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Camera scanning requires Chrome over HTTPS.");
+    throw new Error("Camera scanning requires a modern browser over HTTPS.");
   }
 
   stopScanner();
@@ -127,6 +137,32 @@ export function resumeScanner(onScan, onStatus) {
   }
 }
 
+export async function refocusScanner() {
+  const controller = activeCameraController();
+  if (!controller) return false;
+
+  const focusModes = capabilityValues(controller.capabilities.focusMode);
+  try {
+    if (focusModes.includes("single-shot")) {
+      await controller.apply({ advanced: [{ focusMode: "single-shot" }] });
+      if (focusModes.includes("continuous")) {
+        await wait(REFOCUS_SETTLE_MS);
+        await controller.apply({ advanced: [{ focusMode: "continuous" }] });
+      }
+      return true;
+    }
+
+    if (focusModes.includes("continuous")) {
+      await controller.apply({ advanced: [{ focusMode: "continuous" }] });
+      return true;
+    }
+  } catch {
+    // Let the caller restart the stream when a reported focus mode fails.
+  }
+
+  return false;
+}
+
 async function startNativeScanner(containerElement, onScan, onStatus) {
   try {
     stream = await openCamera();
@@ -148,6 +184,7 @@ async function startNativeScanner(containerElement, onScan, onStatus) {
     throw friendlyCameraError(error, "video-play");
   }
 
+  await optimiseActiveCamera();
   detector = await createBarcodeDetector();
   onStatus?.("Camera active. Looking for barcode...");
   runNativeDetection(onScan, onStatus);
@@ -221,10 +258,67 @@ async function startHtml5Scanner(containerElement, onScan, onStatus) {
       },
       () => {}
     );
+    await optimiseActiveCamera();
   } catch (error) {
     stopScanner();
     throw friendlyCameraError(error, "html5-start");
   }
+}
+
+function barcodeScanRegion(viewfinderWidth, viewfinderHeight) {
+  const width = Math.max(50, Math.floor(Math.min(viewfinderWidth * 0.88, 640)));
+  const height = Math.max(50, Math.floor(Math.min(viewfinderHeight * 0.38, width / 1.8)));
+  return { width, height };
+}
+
+async function optimiseActiveCamera() {
+  const controller = activeCameraController();
+  if (!controller) return;
+
+  const focusModes = capabilityValues(controller.capabilities.focusMode);
+  if (!focusModes.includes("continuous")) return;
+
+  try {
+    await controller.apply({ advanced: [{ focusMode: "continuous" }] });
+  } catch {
+    // Camera controls are best-effort and must never prevent scanning.
+  }
+}
+
+function activeCameraController() {
+  const track = stream?.getVideoTracks?.()[0];
+  if (track?.applyConstraints) {
+    return {
+      capabilities: safeCapabilities(() => track.getCapabilities?.()),
+      apply: (constraints) => track.applyConstraints(constraints)
+    };
+  }
+
+  if (html5QrCode?.isScanning && typeof html5QrCode.applyVideoConstraints === "function") {
+    return {
+      capabilities: safeCapabilities(() => html5QrCode.getRunningTrackCapabilities?.()),
+      apply: (constraints) => html5QrCode.applyVideoConstraints(constraints)
+    };
+  }
+
+  return null;
+}
+
+function safeCapabilities(readCapabilities) {
+  try {
+    return readCapabilities() || {};
+  } catch {
+    return {};
+  }
+}
+
+function capabilityValues(capability) {
+  if (Array.isArray(capability)) return capability;
+  return capability == null ? [] : [capability];
+}
+
+function wait(delay) {
+  return new Promise((resolve) => window.setTimeout(resolve, delay));
 }
 
 function loadHtml5QrCode() {
@@ -259,7 +353,7 @@ function friendlyCameraError(error, step) {
   const detail = [step, name, message].filter(Boolean).join(": ");
 
   if (/notallowed|permission|denied/i.test(`${name} ${message}`)) {
-    return new Error(`Camera permission is blocked. Allow camera for this installed app/site in Chrome settings. ${detail}`);
+    return new Error(`Camera permission is blocked. Allow camera for this installed app/site in browser settings. ${detail}`);
   }
   if (/notfound|no camera|requested device not found/i.test(`${name} ${message}`)) {
     return new Error(`No camera was found on this device. ${detail}`);
@@ -268,7 +362,7 @@ function friendlyCameraError(error, step) {
     return new Error(`Camera is already in use by another app. Close other camera apps and retry. ${detail}`);
   }
   if (/overconstrained|constraint/i.test(`${name} ${message}`)) {
-    return new Error(`Android rejected the camera setting. Retrying with fallback failed. ${detail}`);
+    return new Error(`The browser rejected the camera setting. Retrying with fallback failed. ${detail}`);
   }
-  return new Error(detail || "Camera unavailable. Chrome did not provide an error reason.");
+  return new Error(detail || "Camera unavailable. The browser did not provide an error reason.");
 }
