@@ -139,7 +139,7 @@ function recordScan(payload) {
 
   const session = authorizeScan(payload);
   const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(30000);
 
   try {
     const sheet = getStockSheet();
@@ -169,6 +169,7 @@ function recordScan(payload) {
       update: update
     };
   } finally {
+    SpreadsheetApp.flush();
     lock.releaseLock();
   }
 }
@@ -511,7 +512,7 @@ function updateByRowLegacy(payload) {
   if (target !== 'backstock' && target !== 'shelf') throw new Error('Invalid scan target.');
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(30000);
   try {
     const sheet = getStockSheet();
     const columns = getStockColumns(sheet);
@@ -523,6 +524,7 @@ function updateByRowLegacy(payload) {
     logScan(session, product.barcode, target, quantity, true, message);
     return { ok: true, success: true, message: message, product: product, update: update };
   } finally {
+    SpreadsheetApp.flush();
     lock.releaseLock();
   }
 }
