@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=24";
+import { CONFIG } from "./config.js?v=26";
 import { mark, measure } from "./debug.js";
-import { getAllProducts, login, submitScan, updateProductRow, validateSession } from "./api.js?v=24";
+import { getAllProducts, login, submitScan, updateProductRow, validateSession } from "./api.js?v=26";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=24";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=26";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=25";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=26";
 import {
   els,
   clearFlavourResults,
@@ -588,7 +588,8 @@ async function registerServiceWorker() {
 
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register("./sw.js");
+      const registration = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+      await registration.update();
     } catch {
       setStatus("Offline caching could not be enabled.", "warning");
     }

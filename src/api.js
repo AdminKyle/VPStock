@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=24";
+import { CONFIG } from "./config.js?v=26";
 import { mark, measure } from "./debug.js";
 
 function requireEndpoint() {
