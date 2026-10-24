@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=26";
+import { CONFIG } from "./config.js?v=27";
 import { mark, measure } from "./debug.js";
-import { getAllProducts, login, submitScan, updateProductRow, validateSession } from "./api.js?v=26";
+import { addProduct, getAllProducts, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=27";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=26";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=27";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=26";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=27";
 import {
   els,
   clearFlavourResults,
@@ -21,7 +21,7 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js?v=24";
+} from "./ui.js?v=27";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
@@ -34,6 +34,8 @@ let productCatalogLoadedAt = 0;
 let productCatalogPromise = null;
 let productCatalogCacheRead = false;
 let catalogSaveTimer = 0;
+let pendingProductReview = null;
+let isAddingProduct = false;
 const productCatalogOverrides = new Map();
 
 function readCachedProductCatalog() {
@@ -127,6 +129,19 @@ function updateProductCatalog(updatedProduct) {
   const index = productCatalog.findIndex((product) => Number(product.row) === Number(updatedProduct.row));
   if (index >= 0) productCatalog[index] = prepared;
   saveProductCatalog();
+}
+
+function invalidateProductCatalog() {
+  productCatalog = [];
+  productCatalogLoadedAt = 0;
+  productCatalogPromise = null;
+  productCatalogCacheRead = true;
+  productCatalogOverrides.clear();
+  try {
+    localStorage.removeItem(CONFIG.PRODUCT_CATALOG_CACHE_KEY);
+  } catch {
+    // The fresh in-memory catalogue is still requested below.
+  }
 }
 
 function cleanBarcode(value) {
@@ -536,6 +551,194 @@ async function handleProductSelect(product) {
   }
 }
 
+function setProductModalOpen(isOpen) {
+  els.addProductModal?.classList.toggle("hidden", !isOpen);
+  document.body.classList.toggle("product-modal-open", isOpen);
+}
+
+function setProductMessage(element, message = "", type = "neutral") {
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.type = type;
+}
+
+function resetProductForm() {
+  pendingProductReview = null;
+  els.addProductForm?.reset();
+  els.addProductFields?.classList.remove("hidden");
+  els.addProductReview?.classList.add("hidden");
+  els.newSectionConfirmation?.classList.add("hidden");
+  els.matchedSectionSummary?.classList.remove("warning");
+  setProductMessage(els.addProductMessage);
+  setProductMessage(els.addProductReviewMessage);
+  if (els.reviewProductButton) {
+    els.reviewProductButton.disabled = false;
+    els.reviewProductButton.textContent = "Review product";
+  }
+  if (els.confirmAddProductButton) {
+    els.confirmAddProductButton.disabled = false;
+    els.confirmAddProductButton.textContent = "Confirm and add";
+  }
+}
+
+function openAddProductModal() {
+  if (!session) {
+    showLogin("Please log in before adding a product.");
+    return;
+  }
+  if (!navigator.onLine) {
+    setStatus("Product additions require an internet connection.", "warning");
+    return;
+  }
+  resetProductForm();
+  setProductModalOpen(true);
+  window.setTimeout(() => els.newProductNameInput?.focus(), 40);
+}
+
+function closeAddProductModal() {
+  if (isAddingProduct) return;
+  setProductModalOpen(false);
+  resetProductForm();
+  els.addProductButton?.focus();
+}
+
+function newProductInput() {
+  return {
+    productName: String(els.newProductNameInput?.value || "").trim().replace(/\s+/g, " "),
+    barcode: cleanBarcode(els.newProductBarcodeInput?.value),
+    sku: String(els.newProductSkuInput?.value || "").trim()
+  };
+}
+
+function validateNewProductClient(input) {
+  if (!input.productName) return "Enter a product name.";
+  const barcodeError = validateBarcode(input.barcode);
+  if (barcodeError) return barcodeError;
+  if (input.sku && !/^[A-Za-z0-9._\-/]+$/.test(input.sku)) return "SKU contains unsupported characters.";
+  return "";
+}
+
+function addSummaryLine(container, label, value) {
+  const line = document.createElement("span");
+  const strong = document.createElement("strong");
+  strong.textContent = label;
+  line.append(strong, document.createTextNode(value));
+  container.append(line);
+}
+
+function renderProductReview(result, input) {
+  pendingProductReview = { result, input };
+  els.reviewProductName.textContent = input.productName;
+  els.reviewBarcode.textContent = input.barcode;
+  els.reviewSku.textContent = input.sku || "Not supplied";
+  els.matchedSectionSummary.replaceChildren();
+
+  if (result.match) {
+    const inheritedCost = Number(String(result.match.inheritedCost ?? "").replace(/[^0-9.-]/g, ""));
+    const inheritedCostLabel = Number.isFinite(inheritedCost) ? `£${inheritedCost.toFixed(2)}` : "No C.O.G.";
+    els.matchedSectionSummary.classList.remove("warning");
+    addSummaryLine(els.matchedSectionSummary, `Matched section: ${result.match.label}`, "");
+    addSummaryLine(els.matchedSectionSummary, "Closest existing product: ", result.match.exemplarName);
+    addSummaryLine(els.matchedSectionSummary, "Inherited: ", `${result.match.inheritedBrand || "No brand"} · ${inheritedCostLabel} · ${result.match.inheritedCategory || "Uncategorised"}`);
+    els.newSectionConfirmation.classList.add("hidden");
+    els.confirmAddProductButton.textContent = "Confirm and add";
+  } else {
+    els.matchedSectionSummary.classList.add("warning");
+    addSummaryLine(els.matchedSectionSummary, "No existing section matched", "");
+    const detail = document.createElement("span");
+    detail.textContent = "Check the title carefully. Continuing will add a black separator at the bottom of MASTER_DB, then place this product beneath it with £0.00 C.O.G. and the Uncategorised category.";
+    els.matchedSectionSummary.append(detail);
+    els.newSectionConfirmation.classList.remove("hidden");
+    els.confirmAddProductButton.textContent = "Create section and add";
+  }
+
+  els.addProductFields.classList.add("hidden");
+  els.addProductReview.classList.remove("hidden");
+  els.confirmAddProductButton.focus();
+}
+
+async function handleProductReview(event) {
+  event.preventDefault();
+  if (isAddingProduct) return;
+  if (!session) {
+    closeAddProductModal();
+    showLogin("Please log in before adding a product.");
+    return;
+  }
+  if (!navigator.onLine) {
+    setProductMessage(els.addProductMessage, "Product additions require an internet connection.", "error");
+    return;
+  }
+
+  const input = newProductInput();
+  const inputError = validateNewProductClient(input);
+  if (inputError) {
+    setProductMessage(els.addProductMessage, inputError, "error");
+    return;
+  }
+
+  isAddingProduct = true;
+  els.reviewProductButton.disabled = true;
+  els.reviewProductButton.textContent = "Checking MASTER_DB...";
+  setProductMessage(els.addProductMessage, "Checking for duplicates and the safest matching section...");
+  try {
+    const result = await previewProductAddition({ session, ...input });
+    renderProductReview(result, input);
+  } catch (error) {
+    setProductMessage(els.addProductMessage, error.message, "error");
+  } finally {
+    isAddingProduct = false;
+    els.reviewProductButton.disabled = false;
+    els.reviewProductButton.textContent = "Review product";
+  }
+}
+
+function editProductDetails() {
+  pendingProductReview = null;
+  els.addProductReview.classList.add("hidden");
+  els.addProductFields.classList.remove("hidden");
+  els.confirmNewSectionInput.checked = false;
+  setProductMessage(els.addProductReviewMessage);
+  els.newProductNameInput.focus();
+}
+
+async function confirmProductAddition() {
+  if (isAddingProduct || !pendingProductReview) return;
+  const { result, input } = pendingProductReview;
+  const confirmNewSection = !result.match;
+  if (confirmNewSection && !els.confirmNewSectionInput.checked) {
+    setProductMessage(els.addProductReviewMessage, "Tick the new-section confirmation before continuing.", "error");
+    return;
+  }
+
+  isAddingProduct = true;
+  els.confirmAddProductButton.disabled = true;
+  els.editProductButton.disabled = true;
+  els.confirmAddProductButton.textContent = "Adding safely...";
+  setProductMessage(els.addProductReviewMessage, "Adding the product without changing existing product rows...");
+  try {
+    const added = await addProduct({
+      session,
+      ...input,
+      confirmationToken: result.confirmationToken,
+      confirmNewSection
+    });
+    invalidateProductCatalog();
+    await refreshProductCatalog({ force: true });
+    setProductModalOpen(false);
+    resetProductForm();
+    setStatus(added.message || `${input.productName} was added.`, "success");
+    updateRecent({ flavour: input.productName });
+  } catch (error) {
+    setProductMessage(els.addProductReviewMessage, error.message, "error");
+  } finally {
+    isAddingProduct = false;
+    els.confirmAddProductButton.disabled = false;
+    els.editProductButton.disabled = false;
+    els.confirmAddProductButton.textContent = result.match ? "Confirm and add" : "Create section and add";
+  }
+}
+
 function bindEvents() {
   els.loginForm.addEventListener("submit", handleLogin);
 
@@ -552,6 +755,8 @@ function bindEvents() {
     searchGeneration += 1;
     setCameraRunning(false);
     setCameraOpen(false);
+    setProductModalOpen(false);
+    resetProductForm();
     showLogin("Logged out.");
   });
 
@@ -565,11 +770,18 @@ function bindEvents() {
   els.flavourSearchInput?.addEventListener("input", handleFlavourSearch);
   els.quantitySignButton?.addEventListener("click", toggleQuantitySign);
   els.quantityInput?.addEventListener("input", syncQuantitySignButton);
+  els.addProductButton?.addEventListener("click", openAddProductModal);
+  els.closeAddProductButton?.addEventListener("click", closeAddProductModal);
+  els.addProductForm?.addEventListener("submit", handleProductReview);
+  els.editProductButton?.addEventListener("click", editProductDetails);
+  els.confirmAddProductButton?.addEventListener("click", confirmProductAddition);
 
   window.addEventListener("online", () => setStatus("Back online. Ready to submit scans.", "success"));
   window.addEventListener("offline", () => setStatus("Offline. The app opens, but scans cannot be submitted.", "warning"));
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !els.cameraModal.classList.contains("hidden")) closeCameraScanner();
+    if (event.key !== "Escape") return;
+    if (!els.addProductModal.classList.contains("hidden")) closeAddProductModal();
+    else if (!els.cameraModal.classList.contains("hidden")) closeCameraScanner();
   });
 }
 
@@ -589,6 +801,12 @@ async function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     try {
       const registration = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
       await registration.update();
     } catch {
       setStatus("Offline caching could not be enabled.", "warning");

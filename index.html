@@ -10,7 +10,7 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=26">
+    <link rel="stylesheet" href="./src/styles.css?v=27">
     <script>
       (() => {
         try {
@@ -95,6 +95,15 @@
           </section>
 
           <section class="search-panel" aria-labelledby="flavourSearchTitle">
+            <div class="search-panel-heading">
+              <div>
+                <p class="section-label">Products</p>
+                <strong>Find or add a product</strong>
+              </div>
+              <button id="addProductButton" class="add-product-button" type="button" aria-label="Add a new product" title="Add a new product">
+                <span aria-hidden="true">+</span>
+              </button>
+            </div>
             <div class="search-field-wrap">
               <svg aria-hidden="true" class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
               <label class="sr-only" for="flavourSearchInput" id="flavourSearchTitle">Find a product</label>
@@ -163,8 +172,59 @@
           </div>
           <footer class="camera-modal-footer">Keep the device steady. Scans submit automatically.</footer>
         </section>
+
+        <section id="addProductModal" class="product-modal hidden" role="dialog" aria-modal="true" aria-labelledby="addProductTitle">
+          <div class="product-modal-card">
+            <header class="product-modal-header">
+              <div>
+                <p class="section-label">MASTER_DB</p>
+                <h2 id="addProductTitle">Add product</h2>
+              </div>
+              <button id="closeAddProductButton" class="modal-close-button" type="button" aria-label="Close add product">×</button>
+            </header>
+
+            <form id="addProductForm" class="product-form">
+              <div id="addProductFields" class="form-stack">
+                <p class="product-form-help">Enter the label exactly as it should appear in the stock sheet.</p>
+                <label class="field">
+                  <span>Product name</span>
+                  <input id="newProductNameInput" name="productName" autocomplete="off" maxlength="160" required placeholder="e.g. PIXL 8000 Blueberry Kit">
+                </label>
+                <label class="field">
+                  <span>Barcode</span>
+                  <input id="newProductBarcodeInput" name="barcode" autocomplete="off" inputmode="text" maxlength="48" required>
+                </label>
+                <label class="field">
+                  <span>SKU <small>Optional</small></span>
+                  <input id="newProductSkuInput" name="sku" autocomplete="off" maxlength="80">
+                </label>
+                <p id="addProductMessage" class="message" role="status" aria-live="polite"></p>
+                <button id="reviewProductButton" class="primary-button" type="submit">Review product</button>
+              </div>
+
+              <div id="addProductReview" class="product-review hidden">
+                <p class="review-intro">Check all three fields before the final confirmation.</p>
+                <dl class="review-grid">
+                  <div><dt>Product name</dt><dd id="reviewProductName"></dd></div>
+                  <div><dt>Barcode</dt><dd id="reviewBarcode"></dd></div>
+                  <div><dt>SKU</dt><dd id="reviewSku"></dd></div>
+                </dl>
+                <div id="matchedSectionSummary" class="section-match-card"></div>
+                <label id="newSectionConfirmation" class="new-section-confirmation hidden">
+                  <input id="confirmNewSectionInput" type="checkbox">
+                  <span>I confirm this title does not belong to an existing product section. Create a black separator at the bottom and add it as a new section.</span>
+                </label>
+                <p id="addProductReviewMessage" class="message" role="status" aria-live="polite"></p>
+                <div class="review-actions">
+                  <button id="editProductButton" class="secondary-button" type="button">Edit details</button>
+                  <button id="confirmAddProductButton" class="primary-button" type="button">Confirm and add</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=26"></script>
+    <script type="module" src="./src/app.js?v=27"></script>
   </body>
 </html>

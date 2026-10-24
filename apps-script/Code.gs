@@ -7,7 +7,7 @@ const CONFIG = {
 
   BARCODE_COLUMN: 1,
   SKU_COLUMN: 2,
-  CATEGORY_COLUMN: 3,
+  COG_COLUMN: 3,
   BRAND_COLUMN: 4,
   PRODUCT_TYPE_COLUMN: 5,
   FLAVOUR_COLUMN: 5,
@@ -16,6 +16,7 @@ const CONFIG = {
   TOTAL_QTY_COLUMN: 8,
   LAST_USER_COLUMN: 9,
   LAST_SCAN_COLUMN: 10,
+  CATEGORY_COLUMN: 13,
 
   // If matching headers exist in row 1, they override the fallback indexes above.
   BARCODE_HEADERS: ['barcode', 'bar code', 'sku', 'product code'],
@@ -31,6 +32,7 @@ const CONFIG = {
 
   SESSION_HOURS: 12,
   SESSION_CACHE_SECONDS: 1800,
+  PRODUCT_CONFIRMATION_SECONDS: 600,
   SCAN_UPDATE_MODE: 'increment', // increment, setQuantity, setTimestamp
   ALLOW_LEGACY_UNAUTHENTICATED_SCANS: false,
   MIN_BARCODE_LENGTH: 4,
@@ -67,6 +69,8 @@ function routeRequest(payload) {
     if (action === 'scan') return recordScan(payload);
     if (action === 'getAllProducts') return getAllProducts();
     if (action === 'searchProducts') return searchProducts(payload.query || '');
+    if (action === 'previewProductAddition') return previewProductAddition(payload);
+    if (action === 'addProduct') return addProduct(payload);
     if (action === 'scanBarcode') return scanBarcodeLegacy(payload);
     if (action === 'updateByRow') return updateByRowLegacy(payload);
     return { ok: false, error: 'Unknown action.' };
@@ -383,6 +387,7 @@ function getProductFromRow(sheet, row) {
     row: row,
     barcode: clean(data[CONFIG.BARCODE_COLUMN - 1]),
     sku: clean(data[CONFIG.SKU_COLUMN - 1]),
+    cost: Number(data[CONFIG.COG_COLUMN - 1]) || 0,
     category: clean(data[CONFIG.CATEGORY_COLUMN - 1]),
     brand: clean(data[CONFIG.BRAND_COLUMN - 1]),
     productType: clean(data[CONFIG.PRODUCT_TYPE_COLUMN - 1]),
@@ -424,6 +429,7 @@ function getProductFromValues(data, row) {
     row: row,
     barcode: clean(data[CONFIG.BARCODE_COLUMN - 1]),
     sku: clean(data[CONFIG.SKU_COLUMN - 1]),
+    cost: Number(data[CONFIG.COG_COLUMN - 1]) || 0,
     category: clean(data[CONFIG.CATEGORY_COLUMN - 1]),
     brand: clean(data[CONFIG.BRAND_COLUMN - 1]),
     productType: clean(data[CONFIG.PRODUCT_TYPE_COLUMN - 1]),
@@ -458,6 +464,376 @@ function searchProducts(query) {
   });
 
   return { ok: true, success: true, products: products, count: products.length };
+}
+
+function previewProductAddition(payload) {
+  const session = authorizeScan(payload);
+  const input = validateNewProductInput(payload);
+  const sheet = getStockSheet();
+  assertNewProductIsUnique(sheet, input);
+
+  const sections = buildProductSections(sheet);
+  const match = findBestProductSection(input.productName, sections);
+  const confirmationToken = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  const confirmation = {
+    username: session.username,
+    productName: input.productName,
+    barcode: input.barcode,
+    sku: input.sku,
+    matchMode: match ? 'existing' : 'new',
+    sectionFingerprint: match ? match.fingerprint : ''
+  };
+  CacheService.getScriptCache().put(
+    'product-confirmation:' + confirmationToken,
+    JSON.stringify(confirmation),
+    CONFIG.PRODUCT_CONFIRMATION_SECONDS
+  );
+
+  return {
+    ok: true,
+    success: true,
+    confirmationToken: confirmationToken,
+    expiresInSeconds: CONFIG.PRODUCT_CONFIRMATION_SECONDS,
+    product: input,
+    match: match ? publicSectionMatch(match) : null,
+    requiresNewSectionConfirmation: !match
+  };
+}
+
+function addProduct(payload) {
+  const session = authorizeScan(payload);
+  const input = validateNewProductInput(payload);
+  const confirmationToken = clean(payload.confirmationToken);
+  if (!confirmationToken) throw new Error('Review the product before adding it.');
+
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'product-confirmation:' + confirmationToken;
+  const rawConfirmation = cache.get(cacheKey);
+  if (!rawConfirmation) throw new Error('This product review expired. Review the details again.');
+
+  const confirmation = JSON.parse(rawConfirmation);
+  if (
+    clean(confirmation.username).toLowerCase() !== clean(session.username).toLowerCase() ||
+    confirmation.productName !== input.productName ||
+    confirmation.barcode !== input.barcode ||
+    confirmation.sku !== input.sku
+  ) {
+    throw new Error('Product details changed after review. Review them again before adding.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getStockSheet();
+    assertNewProductIsUnique(sheet, input);
+    const match = findBestProductSection(input.productName, buildProductSections(sheet));
+    const currentMode = match ? 'existing' : 'new';
+    if (currentMode !== confirmation.matchMode) {
+      throw new Error('The matching section changed. Review the product again before adding.');
+    }
+    if (match && confirmation.sectionFingerprint !== match.fingerprint) {
+      throw new Error('The matching section changed. Review the product again before adding.');
+    }
+    if (!match && !isTrue(payload.confirmNewSection)) {
+      throw new Error('Confirm that this product should create a new section.');
+    }
+
+    const result = match
+      ? insertProductIntoSection(sheet, input, match, session)
+      : insertProductInNewSection(sheet, input, session);
+    cache.remove(cacheKey);
+    SpreadsheetApp.flush();
+    logProductAddition(session, result.product, result.mode, result.sectionLabel, result.row);
+    return {
+      ok: true,
+      success: true,
+      message: result.mode === 'existing'
+        ? 'Product added to ' + result.sectionLabel + '.'
+        : 'New section created and product added.',
+      product: result.product,
+      row: result.row,
+      mode: result.mode,
+      sectionLabel: result.sectionLabel
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function validateNewProductInput(payload) {
+  const productName = clean(payload.productName).replace(/\s+/g, ' ');
+  const barcode = cleanBarcode(payload.barcode);
+  const sku = clean(payload.sku).replace(/[\u200B-\u200D\uFEFF]/g, '');
+  if (!productName) throw new Error('Enter a product name.');
+  if (productName.length < 3) throw new Error('Product name is too short.');
+  if (productName.length > 160) throw new Error('Product name is too long.');
+  validateBarcode(barcode);
+  if (sku.length > 80) throw new Error('SKU is too long.');
+  if (sku && !/^[A-Za-z0-9._\-/]+$/.test(sku)) throw new Error('SKU contains unsupported characters.');
+  return { productName: productName, barcode: barcode, sku: sku };
+}
+
+function assertNewProductIsUnique(sheet, input) {
+  if (findValueRow(sheet, CONFIG.BARCODE_COLUMN, input.barcode)) {
+    throw new Error('That barcode already exists in MASTER_DB.');
+  }
+  if (input.sku && findValueRow(sheet, CONFIG.SKU_COLUMN, input.sku)) {
+    throw new Error('That SKU already exists in MASTER_DB.');
+  }
+
+  const lastDataRow = findLastProductDataRow(sheet);
+  if (lastDataRow < 2) return;
+  const names = sheet.getRange(2, CONFIG.PRODUCT_TYPE_COLUMN, lastDataRow - 1, 1).getDisplayValues();
+  const normalizedName = normalizeProductTitle(input.productName);
+  for (let i = 0; i < names.length; i++) {
+    if (normalizeProductTitle(names[i][0]) === normalizedName) {
+      throw new Error('That product name already exists in MASTER_DB.');
+    }
+  }
+}
+
+function buildProductSections(sheet) {
+  const lastDataRow = findLastProductDataRow(sheet);
+  if (lastDataRow < 2) return [];
+  const width = Math.max(CONFIG.CATEGORY_COLUMN, CONFIG.PRODUCT_TYPE_COLUMN);
+  const rows = sheet.getRange(2, 1, lastDataRow - 1, width).getDisplayValues();
+  const sections = [];
+  let current = null;
+
+  rows.forEach(function (values, index) {
+    const row = index + 2;
+    const name = clean(values[CONFIG.PRODUCT_TYPE_COLUMN - 1]);
+    if (name === '__SEPARATOR__') {
+      if (current && current.products.length) sections.push(finalizeProductSection(current));
+      current = null;
+      return;
+    }
+    if (!name) return;
+    if (!current) current = { startRow: row, endRow: row, products: [] };
+    current.endRow = row;
+    current.products.push({
+      row: row,
+      barcode: clean(values[CONFIG.BARCODE_COLUMN - 1]),
+      sku: clean(values[CONFIG.SKU_COLUMN - 1]),
+      cost: values[CONFIG.COG_COLUMN - 1],
+      brand: clean(values[CONFIG.BRAND_COLUMN - 1]),
+      name: name,
+      category: clean(values[12])
+    });
+  });
+  if (current && current.products.length) sections.push(finalizeProductSection(current));
+  return sections;
+}
+
+function finalizeProductSection(section) {
+  const representative = section.products[0];
+  const fingerprint = normalizeProductTitle(representative.name) + '|' + normalizeProductTitle(section.products[section.products.length - 1].name);
+  return Object.assign(section, {
+    representative: representative,
+    label: deriveSectionLabel(section.products),
+    fingerprint: fingerprint
+  });
+}
+
+function findBestProductSection(productName, sections) {
+  const target = productTitleParts(productName);
+  let best = null;
+
+  sections.forEach(function (section) {
+    let sectionBest = null;
+    section.products.forEach(function (product) {
+      const score = productTitleSimilarity(target, productTitleParts(product.name));
+      if (!sectionBest || score.total > sectionBest.score.total) {
+        sectionBest = { product: product, score: score };
+      }
+    });
+    if (!sectionBest) return;
+    const candidate = Object.assign({}, section, {
+      exemplar: sectionBest.product,
+      matchScore: sectionBest.score.total,
+      sharedPrefixTokens: sectionBest.score.sharedPrefixTokens,
+      sharedType: sectionBest.score.sharedType
+    });
+    if (!best || candidate.matchScore > best.matchScore) best = candidate;
+  });
+
+  if (!best) return null;
+  return best.sharedPrefixTokens >= 2 ? best : null;
+}
+
+function productTitleParts(value) {
+  const normalized = normalizeProductTitle(value);
+  const tokens = normalized ? normalized.split(' ') : [];
+  const typeTokens = ['kit', 'kits', 'pod', 'pods', 'liquid', 'liquids', 'pouch', 'pouches', 'device', 'devices', 'coil', 'coils'];
+  const type = tokens.slice().reverse().find(function (token) { return typeTokens.indexOf(token) >= 0; }) || '';
+  return { normalized: normalized, tokens: tokens, type: type };
+}
+
+function productTitleSimilarity(target, candidate) {
+  let sharedPrefixTokens = 0;
+  const prefixLength = Math.min(target.tokens.length, candidate.tokens.length);
+  while (sharedPrefixTokens < prefixLength && target.tokens[sharedPrefixTokens] === candidate.tokens[sharedPrefixTokens]) {
+    sharedPrefixTokens++;
+  }
+  const candidateSet = {};
+  candidate.tokens.forEach(function (token) { candidateSet[token] = true; });
+  const sharedTokens = target.tokens.filter(function (token) { return candidateSet[token]; }).length;
+  const sharedType = !!target.type && target.type === candidate.type;
+  let total = sharedPrefixTokens * 12 + sharedTokens * 2 + (sharedType ? 10 : 0);
+  if (target.normalized === candidate.normalized) total += 100;
+  return { total: total, sharedPrefixTokens: sharedPrefixTokens, sharedType: sharedType };
+}
+
+function deriveSectionLabel(products) {
+  if (!products.length) return 'matched section';
+  const tokenLists = products.map(function (product) { return productTitleParts(product.name).tokens; });
+  const common = [];
+  const shortest = Math.min.apply(null, tokenLists.map(function (tokens) { return tokens.length; }));
+  for (let i = 0; i < shortest; i++) {
+    const token = tokenLists[0][i];
+    if (tokenLists.every(function (tokens) { return tokens[i] === token; })) common.push(token);
+    else break;
+  }
+  const commonType = tokenLists.map(function (tokens) { return productTitleParts(tokens.join(' ')).type; })
+    .filter(Boolean)
+    .filter(function (type, index, all) { return all.indexOf(type) === index; });
+  const labelTokens = common.slice();
+  if (commonType.length === 1 && labelTokens.indexOf(commonType[0]) < 0) labelTokens.push(commonType[0]);
+  if (!labelTokens.length) return products[0].brand || 'matched section';
+  return labelTokens.map(titleCaseToken).join(' ');
+}
+
+function titleCaseToken(token) {
+  return token.length <= 4 && /\d/.test(token)
+    ? token.toUpperCase()
+    : token.charAt(0).toUpperCase() + token.slice(1);
+}
+
+function normalizeProductTitle(value) {
+  return clean(value).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function publicSectionMatch(match) {
+  return {
+    label: match.label,
+    exemplarName: match.exemplar.name,
+    inheritedBrand: match.exemplar.brand,
+    inheritedCost: match.exemplar.cost,
+    inheritedCategory: match.exemplar.category,
+    insertAfterRow: match.endRow
+  };
+}
+
+function insertProductIntoSection(sheet, input, match, session) {
+  const row = match.endRow + 1;
+  sheet.insertRowsAfter(match.endRow, 1);
+  copyProductRowStructure(sheet, match.exemplar.row, row);
+  writeNewProductValues(sheet, row, input, match.exemplar, session);
+  return {
+    row: row,
+    mode: 'existing',
+    sectionLabel: match.label,
+    product: getProductFromRow(sheet, row)
+  };
+}
+
+function insertProductInNewSection(sheet, input, session) {
+  const lastDataRow = findLastProductDataRow(sheet);
+  const separatorRow = Math.max(lastDataRow, 1) + 1;
+  const productRow = separatorRow + 1;
+  sheet.insertRowsAfter(Math.max(lastDataRow, 1), 2);
+
+  const lastProductRow = findPreviousProductRow(sheet, separatorRow - 1);
+  if (lastProductRow) copyProductRowStructure(sheet, lastProductRow, productRow);
+  sheet.getRange(separatorRow, 1, 1, Math.max(sheet.getLastColumn(), 18))
+    .setBackground('#000000')
+    .setFontColor('#ffffff')
+    .setFontWeight('bold');
+  sheet.getRange(separatorRow, CONFIG.PRODUCT_TYPE_COLUMN).setValue('__SEPARATOR__');
+
+  const blankExemplar = { cost: '', brand: '', category: 'Uncategorised' };
+  writeNewProductValues(sheet, productRow, input, blankExemplar, session);
+  return {
+    row: productRow,
+    mode: 'new',
+    sectionLabel: 'New section',
+    product: getProductFromRow(sheet, productRow)
+  };
+}
+
+function copyProductRowStructure(sheet, sourceRow, targetRow) {
+  if (!sourceRow || sourceRow === targetRow) return;
+  const width = Math.max(sheet.getLastColumn(), 18);
+  const source = sheet.getRange(sourceRow, 1, 1, width);
+  const target = sheet.getRange(targetRow, 1, 1, width);
+  source.copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  source.copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+}
+
+function writeNewProductValues(sheet, row, input, exemplar, session) {
+  const now = new Date();
+  const values = [[
+    input.barcode,
+    input.sku,
+    parseCost(exemplar.cost),
+    exemplar.brand || '',
+    input.productName,
+    0,
+    0,
+    0,
+    session.displayName || session.username || '',
+    now
+  ]];
+  sheet.getRange(row, 1, 1, 10).setValues(values);
+  sheet.getRange(row, CONFIG.BARCODE_COLUMN, 1, 2).setNumberFormat('@');
+  sheet.getRange(row, 13).setValue(exemplar.category || 'Uncategorised');
+}
+
+function parseCost(value) {
+  if (typeof value === 'number') return value;
+  const numeric = Number(String(value || '').replace(/[^0-9.-]/g, ''));
+  return isFinite(numeric) ? numeric : '';
+}
+
+function findLastProductDataRow(sheet) {
+  const maxRows = sheet.getMaxRows();
+  if (maxRows < 2) return 1;
+  const values = sheet.getRange(2, CONFIG.PRODUCT_TYPE_COLUMN, maxRows - 1, 1).getDisplayValues();
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (clean(values[i][0])) return i + 2;
+  }
+  return 1;
+}
+
+function findPreviousProductRow(sheet, fromRow) {
+  if (fromRow < 2) return 0;
+  const values = sheet.getRange(2, CONFIG.PRODUCT_TYPE_COLUMN, fromRow - 1, 1).getDisplayValues();
+  for (let i = values.length - 1; i >= 0; i--) {
+    const name = clean(values[i][0]);
+    if (name && name !== '__SEPARATOR__') return i + 2;
+  }
+  return 0;
+}
+
+function logProductAddition(session, product, mode, sectionLabel, row) {
+  const sheet = getOrCreateSheet('Product Add Log', [
+    'Timestamp', 'Username', 'Barcode', 'SKU', 'Product Name', 'Mode', 'Section', 'MASTER_DB Row'
+  ]);
+  sheet.appendRow([
+    new Date(),
+    session.displayName || session.username || '',
+    product.barcode,
+    product.sku,
+    product.productType,
+    mode,
+    sectionLabel,
+    row
+  ]);
+  if (!sheet.isSheetHidden()) sheet.hideSheet();
+}
+
+function isTrue(value) {
+  return ['true', '1', 'yes', 'y'].indexOf(clean(value).toLowerCase()) >= 0;
 }
 
 function flavourMatchScore(flavour, query) {

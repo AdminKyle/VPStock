@@ -30,7 +30,27 @@ export const els = {
   queueActions: document.querySelector("#queueActions"),
   retryQueueButton: document.querySelector("#retryQueueButton"),
   clearQueueButton: document.querySelector("#clearQueueButton"),
-  queueCount: document.querySelector("#queueCount")
+  queueCount: document.querySelector("#queueCount"),
+  addProductButton: document.querySelector("#addProductButton"),
+  addProductModal: document.querySelector("#addProductModal"),
+  closeAddProductButton: document.querySelector("#closeAddProductButton"),
+  addProductForm: document.querySelector("#addProductForm"),
+  addProductFields: document.querySelector("#addProductFields"),
+  addProductReview: document.querySelector("#addProductReview"),
+  newProductNameInput: document.querySelector("#newProductNameInput"),
+  newProductBarcodeInput: document.querySelector("#newProductBarcodeInput"),
+  newProductSkuInput: document.querySelector("#newProductSkuInput"),
+  addProductMessage: document.querySelector("#addProductMessage"),
+  reviewProductButton: document.querySelector("#reviewProductButton"),
+  reviewProductName: document.querySelector("#reviewProductName"),
+  reviewBarcode: document.querySelector("#reviewBarcode"),
+  reviewSku: document.querySelector("#reviewSku"),
+  matchedSectionSummary: document.querySelector("#matchedSectionSummary"),
+  newSectionConfirmation: document.querySelector("#newSectionConfirmation"),
+  confirmNewSectionInput: document.querySelector("#confirmNewSectionInput"),
+  addProductReviewMessage: document.querySelector("#addProductReviewMessage"),
+  editProductButton: document.querySelector("#editProductButton"),
+  confirmAddProductButton: document.querySelector("#confirmAddProductButton")
 };
 
 export function showLogin(message = "") {

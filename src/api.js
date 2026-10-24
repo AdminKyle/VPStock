@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=26";
+import { CONFIG } from "./config.js?v=27";
 import { mark, measure } from "./debug.js";
 
 function requireEndpoint() {
@@ -106,5 +106,27 @@ export function updateProductRow({ session, row, target, quantity }) {
     quantity,
     qty: quantity,
     timestamp: new Date().toISOString()
+  });
+}
+
+export function previewProductAddition({ session, productName, barcode, sku }) {
+  return requestJsonp("previewProductAddition", {
+    token: session?.token,
+    username: session?.username,
+    productName,
+    barcode,
+    sku
+  });
+}
+
+export function addProduct({ session, productName, barcode, sku, confirmationToken, confirmNewSection }) {
+  return requestJsonp("addProduct", {
+    token: session?.token,
+    username: session?.username,
+    productName,
+    barcode,
+    sku,
+    confirmationToken,
+    confirmNewSection: confirmNewSection ? "true" : "false"
   });
 }

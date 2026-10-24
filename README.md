@@ -55,12 +55,15 @@ If you want to keep the old Apps Script-hosted page temporarily, leave its `Inde
 - Responsive wide decoding region aligned to the on-screen frame for improved small 1D barcode capture.
 - Manual barcode/SKU fallback.
 - Flavour search against `MASTER_DB` column E, with row-based stock update.
+- Safe product creation with duplicate checks, automatic section matching, inherited Brand/C.O.G./Category, and a two-stage confirmation.
+- Confirmed unmatched products create a black separator at the logical bottom of `MASTER_DB`, followed by the new product in `Uncategorised` with a zero C.O.G.
 - Backstock / Shelf stock selector before submitting.
 - Duplicate rapid scan prevention.
 - Manual pending-scan retry queue for offline or timed-out submissions.
 - Optional debug/performance mode with `?debug=1`.
 - Clear success, failure, loading, offline, and camera states.
 - Installable PWA shell with `manifest.webmanifest` and service worker.
+- Network-first service-worker updates with cache versioning so installed phones receive new releases when next opened online.
 - Static hosting compatible with GitHub Pages, Cloudflare Pages, Netlify, or any HTTPS host.
 
 ## Project Structure
