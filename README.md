@@ -32,7 +32,7 @@ TOTAL_QTY_COLUMN: 8
 SCAN_UPDATE_MODE: 'increment'
 ```
 
-If row 1 contains matching headers such as `Barcode`, `Backstock`, `Shelf Stock`, or `Total Qty`, the script uses those headers for the main scan columns. Backstock, shelf stock, total quantity, last user, and last scan are written to F, G, H, I, and J.
+If row 1 contains matching headers such as `Barcode`, `Backstock`, `Shelf Stock`, or `Total Qty`, the script uses those headers for the main scan columns. Scans write Backstock, Shelf, Last User, and Last Scan only. The Total column is owned by a single array formula installed in H2, so scans and product creation never overwrite it.
 
 ## Code.gs And Index.html In Apps Script
 
@@ -131,7 +131,7 @@ The script updates the configured stock sheet:
 
 If headers are found in row 1, they take priority over these fallback numbers. Supported default header matches are listed in `CONFIG.BARCODE_HEADERS`, `CONFIG.BACKSTOCK_HEADERS`, `CONFIG.SHELF_HEADERS`, and `CONFIG.TOTAL_QTY_HEADERS`.
 
-After either Backstock or Shelf stock changes, the script writes Total Qty as Backstock + Shelf stock.
+After either Backstock or Shelf stock changes, the sheet's array formula calculates Total Qty as Backstock + Shelf stock. Run `installTotalFormula` once after deploying this backend to migrate an existing `MASTER_DB` sheet.
 
 `CONFIG.SCAN_UPDATE_MODE` controls how a scan changes the cell:
 
@@ -188,7 +188,7 @@ To test accuracy, scan EAN-8, EAN-13, UPC-A, UPC-E, Code 128, Code 39, and any I
 
 To test flavour search, log in, type at least two characters from a known flavour in column E of `MASTER_DB`, tap the matching result, and confirm the selected Backstock/Shelf stock mode updates the same row.
 
-To test update reliability, scan the same item from two devices and confirm `MASTER_DB` updates backstock column G, shelf stock column H, total column I, and last scan column J correctly.
+To test update reliability, scan the same item from two devices and confirm `MASTER_DB` updates Backstock column F, Shelf column G, formula-driven Total column H, Last User column I, and Last Scan column J correctly.
 
 ## Install On A Phone
 

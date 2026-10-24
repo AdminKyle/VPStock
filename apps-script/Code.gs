@@ -353,23 +353,47 @@ function performStockUpdate(sheet, row, target, quantity, columns, session, rowV
 }
 
 function writeStockUpdate(sheet, row, columns, values) {
-  if (
-    columns.shelf === columns.backstock + 1 &&
-    columns.totalQty === columns.backstock + 2 &&
-    columns.lastUser === columns.backstock + 3 &&
-    columns.lastScan === columns.backstock + 4
-  ) {
-    sheet
-      .getRange(row, columns.backstock, 1, 5)
-      .setValues([values.slice(columns.backstock - 1, columns.lastScan)]);
-    return;
+  if (columns.shelf === columns.backstock + 1) {
+    sheet.getRange(row, columns.backstock, 1, 2).setValues([[
+      values[columns.backstock - 1],
+      values[columns.shelf - 1]
+    ]]);
+  } else {
+    sheet.getRange(row, columns.backstock).setValue(values[columns.backstock - 1]);
+    sheet.getRange(row, columns.shelf).setValue(values[columns.shelf - 1]);
   }
 
-  sheet.getRange(row, columns.backstock).setValue(values[columns.backstock - 1]);
-  sheet.getRange(row, columns.shelf).setValue(values[columns.shelf - 1]);
-  sheet.getRange(row, columns.totalQty).setValue(values[columns.totalQty - 1]);
-  sheet.getRange(row, columns.lastUser).setValue(values[columns.lastUser - 1]);
-  sheet.getRange(row, columns.lastScan).setValue(values[columns.lastScan - 1]);
+  if (columns.lastScan === columns.lastUser + 1) {
+    sheet.getRange(row, columns.lastUser, 1, 2).setValues([[
+      values[columns.lastUser - 1],
+      values[columns.lastScan - 1]
+    ]]);
+  } else {
+    sheet.getRange(row, columns.lastUser).setValue(values[columns.lastUser - 1]);
+    sheet.getRange(row, columns.lastScan).setValue(values[columns.lastScan - 1]);
+  }
+}
+
+function installTotalFormula() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getStockSheet();
+    const columns = getStockColumns(sheet);
+    const totalRange = sheet.getRange(2, columns.totalQty, sheet.getMaxRows() - 1, 1);
+    totalRange.clearContent();
+    sheet.getRange(2, columns.totalQty).setFormula(
+      '=ARRAYFORMULA(IF(E2:E="","",IF(E2:E="__SEPARATOR__","",N(F2:F)+N(G2:G))))'
+    );
+    SpreadsheetApp.flush();
+    return {
+      ok: true,
+      message: 'MASTER_DB Total is now formula-driven from Backstock + Shelf.',
+      formulaCell: sheet.getRange(2, columns.totalQty).getA1Notation()
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function nextStockValue(currentValue, quantity) {
@@ -382,7 +406,7 @@ function getProductFromRow(sheet, row) {
   const data = getProductRowValues(sheet, row);
   const backstock = Number(data[CONFIG.BACKSTOCK_COLUMN - 1]) || 0;
   const shelfStock = Number(data[CONFIG.SHELF_STOCK_COLUMN - 1]) || 0;
-  const totalQty = Number(data[CONFIG.TOTAL_QTY_COLUMN - 1]) || 0;
+  const totalQty = backstock + shelfStock;
   return {
     row: row,
     barcode: clean(data[CONFIG.BARCODE_COLUMN - 1]),
@@ -424,7 +448,7 @@ function getAllProducts() {
 function getProductFromValues(data, row) {
   const backstock = Number(data[CONFIG.BACKSTOCK_COLUMN - 1]) || 0;
   const shelfStock = Number(data[CONFIG.SHELF_STOCK_COLUMN - 1]) || 0;
-  const totalQty = Number(data[CONFIG.TOTAL_QTY_COLUMN - 1]) || 0;
+  const totalQty = backstock + shelfStock;
   return {
     row: row,
     barcode: clean(data[CONFIG.BARCODE_COLUMN - 1]),
@@ -772,21 +796,23 @@ function copyProductRowStructure(sheet, sourceRow, targetRow) {
 
 function writeNewProductValues(sheet, row, input, exemplar, session) {
   const now = new Date();
-  const values = [[
+  const productValues = [[
     input.barcode,
     input.sku,
     parseCost(exemplar.cost),
     exemplar.brand || '',
     input.productName,
     0,
-    0,
-    0,
+    0
+  ]];
+  const auditValues = [[
     session.displayName || session.username || '',
     now
   ]];
-  sheet.getRange(row, 1, 1, 10).setValues(values);
+  sheet.getRange(row, 1, 1, 7).setValues(productValues);
+  sheet.getRange(row, CONFIG.LAST_USER_COLUMN, 1, 2).setValues(auditValues);
   sheet.getRange(row, CONFIG.BARCODE_COLUMN, 1, 2).setNumberFormat('@');
-  sheet.getRange(row, 13).setValue(exemplar.category || 'Uncategorised');
+  sheet.getRange(row, CONFIG.CATEGORY_COLUMN).setValue(exemplar.category || 'Uncategorised');
 }
 
 function parseCost(value) {
