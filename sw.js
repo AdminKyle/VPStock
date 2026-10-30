@@ -1,17 +1,17 @@
-const CACHE_NAME = "stock-scanner-v27";
+const CACHE_NAME = "stock-scanner-v28";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./src/app.js?v=27",
-  "./src/api.js?v=27",
+  "./src/app.js?v=28",
+  "./src/api.js?v=28",
   "./src/auth.js",
-  "./src/catalog.js?v=27",
-  "./src/config.js?v=27",
+  "./src/catalog.js?v=28",
+  "./src/config.js?v=28",
   "./src/debug.js",
   "./src/queue.js",
-  "./src/scanner.js?v=27",
-  "./src/ui.js?v=27",
-  "./src/styles.css?v=27",
+  "./src/scanner.js?v=28",
+  "./src/ui.js?v=28",
+  "./src/styles.css?v=28",
   "./public/manifest.webmanifest",
   "./public/icons/icon.svg"
 ];

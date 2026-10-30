@@ -29,6 +29,9 @@ function keepFirstMatch(text, expression, keyForMatch = (match) => match.toLower
 }
 
 export function formatProductName(product = {}) {
+  if (product.product && product.flavour) {
+    return [product.brand, product.product, product.flavour].filter(Boolean).join(" · ");
+  }
   let name = String(product.flavour || product.productType || product.sku || "Unnamed product").trim();
   const brand = String(product.brand || "").trim();
 
@@ -53,12 +56,14 @@ export function formatProductName(product = {}) {
 export function prepareProducts(products = []) {
   return products.map((product) => {
     const displayName = formatProductName(product);
-    const primary = normalizeSearchText(product.flavour || product.productType || displayName);
+    const primary = normalizeSearchText(displayName);
     const barcode = normalizeSearchText(product.barcode);
     const sku = normalizeSearchText(product.sku);
     const fields = [
       primary,
       normalizeSearchText(product.brand),
+      normalizeSearchText(product.product || product.productType),
+      normalizeSearchText(product.flavour),
       sku,
       barcode,
       normalizeSearchText(product.category)

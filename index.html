@@ -10,7 +10,7 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=27">
+    <link rel="stylesheet" href="./src/styles.css?v=28">
     <script>
       (() => {
         try {
@@ -185,10 +185,21 @@
 
             <form id="addProductForm" class="product-form">
               <div id="addProductFields" class="form-stack">
-                <p class="product-form-help">Enter the label exactly as it should appear in the stock sheet.</p>
-                <label class="field">
-                  <span>Product name</span>
-                  <input id="newProductNameInput" name="productName" autocomplete="off" maxlength="160" required placeholder="e.g. PIXL 8000 Blueberry Kit">
+                <p class="product-form-help">Choose the existing range first. This keeps every new flavour in the correct section.</p>
+                <label class="field combobox-field">
+                  <span>Brand</span>
+                  <input id="newProductBrandInput" name="brand" autocomplete="off" maxlength="80" required placeholder="e.g. PIXL" role="combobox" aria-expanded="false" aria-controls="brandSuggestions">
+                  <div id="brandSuggestions" class="combobox-menu hidden" role="listbox"></div>
+                </label>
+                <label class="field combobox-field">
+                  <span>Product</span>
+                  <input id="newProductTypeInput" name="product" autocomplete="off" maxlength="120" required placeholder="e.g. 8000 Kit" role="combobox" aria-expanded="false" aria-controls="productSuggestions">
+                  <div id="productSuggestions" class="combobox-menu hidden" role="listbox"></div>
+                </label>
+                <label class="field combobox-field">
+                  <span>Flavour / colour</span>
+                  <input id="newProductFlavourInput" name="flavour" autocomplete="off" maxlength="120" required placeholder="e.g. Blueberry" role="combobox" aria-expanded="false" aria-controls="flavourSuggestions">
+                  <div id="flavourSuggestions" class="combobox-menu hidden" role="listbox"></div>
                 </label>
                 <label class="field">
                   <span>Barcode</span>
@@ -203,16 +214,18 @@
               </div>
 
               <div id="addProductReview" class="product-review hidden">
-                <p class="review-intro">Check all three fields before the final confirmation.</p>
+                <p class="review-intro">Check every field before the final confirmation.</p>
                 <dl class="review-grid">
-                  <div><dt>Product name</dt><dd id="reviewProductName"></dd></div>
+                  <div><dt>Brand</dt><dd id="reviewBrand"></dd></div>
+                  <div><dt>Product</dt><dd id="reviewProductName"></dd></div>
+                  <div><dt>Flavour</dt><dd id="reviewFlavour"></dd></div>
                   <div><dt>Barcode</dt><dd id="reviewBarcode"></dd></div>
                   <div><dt>SKU</dt><dd id="reviewSku"></dd></div>
                 </dl>
                 <div id="matchedSectionSummary" class="section-match-card"></div>
                 <label id="newSectionConfirmation" class="new-section-confirmation hidden">
                   <input id="confirmNewSectionInput" type="checkbox">
-                  <span>I confirm this title does not belong to an existing product section. Create a black separator at the bottom and add it as a new section.</span>
+                  <span>I confirm this Brand + Product is a genuinely new range. Create a black separator at the bottom and add it as a new section.</span>
                 </label>
                 <p id="addProductReviewMessage" class="message" role="status" aria-live="polite"></p>
                 <div class="review-actions">
@@ -225,6 +238,6 @@
         </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=27"></script>
+    <script type="module" src="./src/app.js?v=28"></script>
   </body>
 </html>

@@ -6,48 +6,42 @@ const source = fs.readFileSync("apps-script/Code.gs", "utf8");
 const context = vm.createContext({ console });
 vm.runInContext(source, context);
 
-function section(startRow, names, brand, cost, category) {
-  const products = names.map((name, index) => ({
+function section(startRow, brand, product, flavours) {
+  const products = flavours.map((flavour, index) => ({
     row: startRow + index,
-    name,
     brand,
-    cost,
-    category
+    product,
+    flavour,
+    name: `${brand} | ${product} | ${flavour}`,
+    cost: 3.7,
+    category: "Pre-Filled Vape Kits & Pods"
   }));
-  context.__testSection = { startRow, endRow: startRow + names.length - 1, products };
+  context.__testSection = { startRow, endRow: startRow + products.length - 1, products };
   return vm.runInContext("finalizeProductSection(__testSection)", context);
 }
 
-const kitSection = section(2, [
-  "PIXL 8000 Blue Magic Kit",
-  "PIXL 8000 Black Cherry Kit",
-  "PIXL 8000 Blueberry Sour Razz Kit"
-], "PIXL", "£3.70", "Pre-Filled Vape Kits & Pods");
+const kitSection = section(2, "PIXL", "8000 Kit", ["Blue Magic", "Black Cherry"]);
+const podSection = section(43, "PIXL", "8000 Pods", ["Blue Magic", "Black Cherry"]);
+context.__sections = [kitSection, podSection];
 
-const podSection = section(43, [
-  "PIXL 8000 Blue Magic Pods",
-  "PIXL 8000 Black Cherry Pods",
-  "PIXL 8000 Blueberry Sour Razz Pods"
-], "PIXL", "£1.83", "Pre-Filled Vape Kits & Pods");
+context.__brand = "pixl";
+context.__product = "8000 kit";
+let match = vm.runInContext("findExactProductSection(__brand, __product, __sections)", context);
+assert.equal(match.startRow, 2, "matching is case-insensitive and exact by Brand + Product");
 
-context.__testSections = [kitSection, podSection];
-context.__testName = "PIXL 8000 Blueberry Kit";
-const match = vm.runInContext("findBestProductSection(__testName, __testSections)", context);
+context.__product = "8000 pods";
+match = vm.runInContext("findExactProductSection(__brand, __product, __sections)", context);
+assert.equal(match.startRow, 43, "pods must not be grouped into the kit section");
 
-assert.equal(match.startRow, 2, "new kit should match the PIXL 8000 kit section");
-assert.equal(match.exemplar.name, "PIXL 8000 Blueberry Sour Razz Kit");
-assert.equal(match.exemplar.cost, "£3.70");
+context.__product = "9000 kit";
+match = vm.runInContext("findExactProductSection(__brand, __product, __sections)", context);
+assert.equal(match, null, "a new product range requires explicit new-section confirmation");
 
-context.__testName = "Completely New Range Mango";
-const unmatched = vm.runInContext("findBestProductSection(__testName, __testSections)", context);
-assert.equal(unmatched, null, "unrelated titles should require a new-section confirmation");
+context.__flavour = "Blue Magic";
+const key = vm.runInContext("structuredProductKey(__brand, '8000 kit', __flavour)", context);
+assert.equal(key, "pixl|8000 kit|blue magic");
 
-context.__testName = "PIXL 9000 Blueberry Kit";
-const differentModel = vm.runInContext("findBestProductSection(__testName, __testSections)", context);
-assert.equal(differentModel, null, "a different model number should not be placed in the PIXL 8000 section");
+assert.equal(vm.runInContext("columnToLetter(9)", context), "I");
+assert.equal(vm.runInContext("columnToLetter(19)", context), "S");
 
-context.__testName = "PIXL 8000 Blueberry Pods";
-const podMatch = vm.runInContext("findBestProductSection(__testName, __testSections)", context);
-assert.equal(podMatch.startRow, 43, "new pods should match the pods section, not kits");
-
-console.log("Apps Script product-section matching tests passed.");
+console.log("Apps Script structured product matching tests passed.");

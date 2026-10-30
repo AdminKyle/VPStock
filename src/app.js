@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=27";
+import { CONFIG } from "./config.js?v=28";
 import { mark, measure } from "./debug.js";
-import { addProduct, getAllProducts, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=27";
+import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=28";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=27";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=28";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=27";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=28";
 import {
   els,
   clearFlavourResults,
@@ -21,7 +21,7 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js?v=27";
+} from "./ui.js?v=28";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
@@ -36,6 +36,8 @@ let productCatalogCacheRead = false;
 let catalogSaveTimer = 0;
 let pendingProductReview = null;
 let isAddingProduct = false;
+let productTaxonomy = { brands: [], sections: [] };
+let productTaxonomyPromise = null;
 const productCatalogOverrides = new Map();
 
 function readCachedProductCatalog() {
@@ -562,6 +564,76 @@ function setProductMessage(element, message = "", type = "neutral") {
   element.dataset.type = type;
 }
 
+function taxonomyKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+async function loadProductTaxonomy({ force = false } = {}) {
+  if (!force && productTaxonomy.sections.length) return productTaxonomy;
+  if (productTaxonomyPromise) return productTaxonomyPromise;
+  productTaxonomyPromise = getProductTaxonomy(session)
+    .then((result) => {
+      productTaxonomy = { brands: result.brands || [], sections: result.sections || [] };
+      return productTaxonomy;
+    })
+    .finally(() => { productTaxonomyPromise = null; });
+  return productTaxonomyPromise;
+}
+
+function matchingSection(brand, product) {
+  const brandKey = taxonomyKey(brand);
+  const productKey = taxonomyKey(product);
+  return productTaxonomy.sections.find((section) =>
+    taxonomyKey(section.brand) === brandKey && taxonomyKey(section.product) === productKey
+  ) || null;
+}
+
+function comboboxOptions(field) {
+  const brand = String(els.newProductBrandInput?.value || "").trim();
+  const product = String(els.newProductTypeInput?.value || "").trim();
+  if (field === "brand") return productTaxonomy.brands;
+  if (field === "product") return productTaxonomy.sections
+    .filter((section) => !brand || taxonomyKey(section.brand) === taxonomyKey(brand))
+    .map((section) => section.product);
+  return matchingSection(brand, product)?.flavours || [];
+}
+
+function renderCombobox(field, input, menu) {
+  const query = taxonomyKey(input.value);
+  const values = [...new Set(comboboxOptions(field))]
+    .filter((value) => !query || taxonomyKey(value).includes(query))
+    .slice(0, 8);
+  menu.replaceChildren();
+  values.forEach((value) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "combobox-option";
+    option.setAttribute("role", "option");
+    option.textContent = value;
+    option.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      input.value = value;
+      menu.classList.add("hidden");
+      input.setAttribute("aria-expanded", "false");
+      if (field === "brand") {
+        els.newProductTypeInput.value = "";
+        els.newProductFlavourInput.value = "";
+        els.newProductTypeInput.focus();
+      } else if (field === "product") {
+        els.newProductFlavourInput.value = "";
+        els.newProductFlavourInput.focus();
+      }
+    });
+    menu.append(option);
+  });
+  menu.classList.toggle("hidden", values.length === 0);
+  input.setAttribute("aria-expanded", String(values.length > 0));
+}
+
+function closeComboboxes() {
+  [els.brandSuggestions, els.productSuggestions, els.flavourSuggestions].forEach((menu) => menu?.classList.add("hidden"));
+}
+
 function resetProductForm() {
   pendingProductReview = null;
   els.addProductForm?.reset();
@@ -592,7 +664,11 @@ function openAddProductModal() {
   }
   resetProductForm();
   setProductModalOpen(true);
-  window.setTimeout(() => els.newProductNameInput?.focus(), 40);
+  setProductMessage(els.addProductMessage, "Loading product ranges…");
+  loadProductTaxonomy()
+    .then(() => setProductMessage(els.addProductMessage))
+    .catch((error) => setProductMessage(els.addProductMessage, error.message, "error"));
+  window.setTimeout(() => els.newProductBrandInput?.focus(), 40);
 }
 
 function closeAddProductModal() {
@@ -604,14 +680,18 @@ function closeAddProductModal() {
 
 function newProductInput() {
   return {
-    productName: String(els.newProductNameInput?.value || "").trim().replace(/\s+/g, " "),
+    brand: String(els.newProductBrandInput?.value || "").trim().replace(/\s+/g, " "),
+    product: String(els.newProductTypeInput?.value || "").trim().replace(/\s+/g, " "),
+    flavour: String(els.newProductFlavourInput?.value || "").trim().replace(/\s+/g, " "),
     barcode: cleanBarcode(els.newProductBarcodeInput?.value),
     sku: String(els.newProductSkuInput?.value || "").trim()
   };
 }
 
 function validateNewProductClient(input) {
-  if (!input.productName) return "Enter a product name.";
+  if (!input.brand) return "Choose or enter a brand.";
+  if (!input.product) return "Choose or enter a product.";
+  if (!input.flavour) return "Enter a flavour or colour.";
   const barcodeError = validateBarcode(input.barcode);
   if (barcodeError) return barcodeError;
   if (input.sku && !/^[A-Za-z0-9._\-/]+$/.test(input.sku)) return "SKU contains unsupported characters.";
@@ -628,7 +708,9 @@ function addSummaryLine(container, label, value) {
 
 function renderProductReview(result, input) {
   pendingProductReview = { result, input };
-  els.reviewProductName.textContent = input.productName;
+  els.reviewBrand.textContent = input.brand;
+  els.reviewProductName.textContent = input.product;
+  els.reviewFlavour.textContent = input.flavour;
   els.reviewBarcode.textContent = input.barcode;
   els.reviewSku.textContent = input.sku || "Not supplied";
   els.matchedSectionSummary.replaceChildren();
@@ -638,7 +720,7 @@ function renderProductReview(result, input) {
     const inheritedCostLabel = Number.isFinite(inheritedCost) ? `£${inheritedCost.toFixed(2)}` : "No C.O.G.";
     els.matchedSectionSummary.classList.remove("warning");
     addSummaryLine(els.matchedSectionSummary, `Matched section: ${result.match.label}`, "");
-    addSummaryLine(els.matchedSectionSummary, "Closest existing product: ", result.match.exemplarName);
+    addSummaryLine(els.matchedSectionSummary, "Existing flavour example: ", result.match.exemplarName);
     addSummaryLine(els.matchedSectionSummary, "Inherited: ", `${result.match.inheritedBrand || "No brand"} · ${inheritedCostLabel} · ${result.match.inheritedCategory || "Uncategorised"}`);
     els.newSectionConfirmation.classList.add("hidden");
     els.confirmAddProductButton.textContent = "Confirm and add";
@@ -646,7 +728,7 @@ function renderProductReview(result, input) {
     els.matchedSectionSummary.classList.add("warning");
     addSummaryLine(els.matchedSectionSummary, "No existing section matched", "");
     const detail = document.createElement("span");
-    detail.textContent = "Check the title carefully. Continuing will add a black separator at the bottom of MASTER_DB, then place this product beneath it with £0.00 C.O.G. and the Uncategorised category.";
+    detail.textContent = "Check Brand and Product carefully. Continuing will create a black separator at the bottom of MASTER_DB, then start this new range beneath it.";
     els.matchedSectionSummary.append(detail);
     els.newSectionConfirmation.classList.remove("hidden");
     els.confirmAddProductButton.textContent = "Create section and add";
@@ -680,9 +762,10 @@ async function handleProductReview(event) {
   isAddingProduct = true;
   els.reviewProductButton.disabled = true;
   els.reviewProductButton.textContent = "Checking MASTER_DB...";
-  setProductMessage(els.addProductMessage, "Checking for duplicates and the safest matching section...");
+  const createNewSection = !matchingSection(input.brand, input.product);
+  setProductMessage(els.addProductMessage, createNewSection ? "Checking the new section and duplicates…" : "Confirming the exact product section…");
   try {
-    const result = await previewProductAddition({ session, ...input });
+    const result = await previewProductAddition({ session, ...input, createNewSection });
     renderProductReview(result, input);
   } catch (error) {
     setProductMessage(els.addProductMessage, error.message, "error");
@@ -699,7 +782,7 @@ function editProductDetails() {
   els.addProductFields.classList.remove("hidden");
   els.confirmNewSectionInput.checked = false;
   setProductMessage(els.addProductReviewMessage);
-  els.newProductNameInput.focus();
+  els.newProductBrandInput.focus();
 }
 
 async function confirmProductAddition() {
@@ -727,8 +810,9 @@ async function confirmProductAddition() {
     await refreshProductCatalog({ force: true });
     setProductModalOpen(false);
     resetProductForm();
-    setStatus(added.message || `${input.productName} was added.`, "success");
-    updateRecent({ flavour: input.productName });
+    productTaxonomy = { brands: [], sections: [] };
+    setStatus(added.message || `${input.brand} ${input.product} ${input.flavour} was added.`, "success");
+    updateRecent({ flavour: `${input.brand} ${input.product} ${input.flavour}` });
   } catch (error) {
     setProductMessage(els.addProductReviewMessage, error.message, "error");
   } finally {
@@ -775,6 +859,15 @@ function bindEvents() {
   els.addProductForm?.addEventListener("submit", handleProductReview);
   els.editProductButton?.addEventListener("click", editProductDetails);
   els.confirmAddProductButton?.addEventListener("click", confirmProductAddition);
+  [
+    ["brand", els.newProductBrandInput, els.brandSuggestions],
+    ["product", els.newProductTypeInput, els.productSuggestions],
+    ["flavour", els.newProductFlavourInput, els.flavourSuggestions]
+  ].forEach(([field, input, menu]) => {
+    input?.addEventListener("focus", () => renderCombobox(field, input, menu));
+    input?.addEventListener("input", () => renderCombobox(field, input, menu));
+    input?.addEventListener("blur", () => window.setTimeout(closeComboboxes, 100));
+  });
 
   window.addEventListener("online", () => setStatus("Back online. Ready to submit scans.", "success"));
   window.addEventListener("offline", () => setStatus("Offline. The app opens, but scans cannot be submitted.", "warning"));

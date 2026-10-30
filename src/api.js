@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=27";
+import { CONFIG } from "./config.js?v=28";
 import { mark, measure } from "./debug.js";
 
 function requireEndpoint() {
@@ -77,6 +77,13 @@ export function getAllProducts(session) {
   }, CONFIG.CATALOG_REQUEST_TIMEOUT_MS);
 }
 
+export function getProductTaxonomy(session) {
+  return requestJsonp("getProductTaxonomy", {
+    token: session?.token,
+    username: session?.username
+  }, CONFIG.CATALOG_REQUEST_TIMEOUT_MS);
+}
+
 export function submitScan({ session, barcode, target, quantity }) {
   return requestJsonp("scan", {
     token: session?.token,
@@ -109,21 +116,26 @@ export function updateProductRow({ session, row, target, quantity }) {
   });
 }
 
-export function previewProductAddition({ session, productName, barcode, sku }) {
+export function previewProductAddition({ session, brand, product, flavour, barcode, sku, createNewSection }) {
   return requestJsonp("previewProductAddition", {
     token: session?.token,
     username: session?.username,
-    productName,
+    brand,
+    product,
+    flavour,
     barcode,
-    sku
+    sku,
+    createNewSection: createNewSection ? "true" : "false"
   });
 }
 
-export function addProduct({ session, productName, barcode, sku, confirmationToken, confirmNewSection }) {
+export function addProduct({ session, brand, product, flavour, barcode, sku, confirmationToken, confirmNewSection }) {
   return requestJsonp("addProduct", {
     token: session?.token,
     username: session?.username,
-    productName,
+    brand,
+    product,
+    flavour,
     barcode,
     sku,
     confirmationToken,
