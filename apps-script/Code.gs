@@ -840,14 +840,15 @@ function normalizeProductTitle(value) {
 }
 
 function publicSectionMatch(match) {
+  const exemplar = match.representative;
   return {
     label: match.label,
     brand: match.brand,
     product: match.product,
-    exemplarName: match.exemplar.flavour,
-    inheritedBrand: match.exemplar.brand,
-    inheritedCost: match.exemplar.cost,
-    inheritedCategory: match.exemplar.category,
+    exemplarName: exemplar.flavour,
+    inheritedBrand: exemplar.brand,
+    inheritedCost: exemplar.cost,
+    inheritedCategory: exemplar.category,
     insertAfterRow: match.endRow
   };
 }
@@ -855,8 +856,8 @@ function publicSectionMatch(match) {
 function insertProductIntoSection(sheet, input, match, session, columns) {
   const row = match.endRow + 1;
   sheet.insertRowsAfter(match.endRow, 1);
-  copyProductRowStructure(sheet, match.exemplar.row, row);
-  writeNewProductValues(sheet, row, input, match.exemplar, session, columns);
+  copyProductRowStructure(sheet, match.representative.row, row);
+  writeNewProductValues(sheet, row, input, match.representative, session, columns);
   return {
     row: row,
     mode: 'existing',

@@ -28,6 +28,10 @@ context.__brand = "pixl";
 context.__product = "8000 kit";
 let match = vm.runInContext("findExactProductSection(__brand, __product, __sections)", context);
 assert.equal(match.startRow, 2, "matching is case-insensitive and exact by Brand + Product");
+context.__match = match;
+const publicMatch = vm.runInContext("publicSectionMatch(__match)", context);
+assert.equal(publicMatch.exemplarName, "Blue Magic", "preview uses the exact section representative flavour");
+assert.equal(publicMatch.inheritedBrand, "PIXL", "preview inherits the representative brand");
 
 context.__product = "8000 pods";
 match = vm.runInContext("findExactProductSection(__brand, __product, __sections)", context);
