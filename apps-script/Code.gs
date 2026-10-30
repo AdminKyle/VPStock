@@ -749,7 +749,7 @@ function finalizeProductSection(section) {
     brand: representative.brand,
     product: representative.product,
     key: structuredSectionKey(representative.brand, representative.product),
-    label: representative.brand + ' · ' + representative.product,
+    label: representative.brand + ' \u00b7 ' + representative.product,
     fingerprint: fingerprint
   });
 }
