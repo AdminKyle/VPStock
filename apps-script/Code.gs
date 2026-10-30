@@ -519,7 +519,7 @@ function getProductTaxonomy(payload) {
   if (!columns.structured) return { ok: true, success: true, schemaVersion: 1, brands: [], sections: [] };
 
   const cache = CacheService.getScriptCache();
-  const cached = cache.get('product-taxonomy-v2');
+  const cached = cache.get('product-taxonomy-v3');
   if (cached) return JSON.parse(cached);
 
   const sections = buildProductSections(sheet, columns).map(function (section) {
@@ -527,6 +527,7 @@ function getProductTaxonomy(payload) {
       brand: section.brand,
       product: section.product,
       label: section.label,
+      cost: section.representative.cost,
       flavours: section.products.map(function (item) { return item.flavour; }).filter(Boolean)
         .filter(function (value, index, all) { return all.indexOf(value) === index; })
         .sort(function (a, b) { return a.localeCompare(b); })
@@ -541,7 +542,7 @@ function getProductTaxonomy(payload) {
       .sort(function (a, b) { return a.localeCompare(b); }),
     sections: sections
   };
-  cache.put('product-taxonomy-v2', JSON.stringify(result), 600);
+  cache.put('product-taxonomy-v3', JSON.stringify(result), 600);
   return result;
 }
 
@@ -569,6 +570,7 @@ function previewProductAddition(payload) {
     flavour: input.flavour,
     barcode: input.barcode,
     sku: input.sku,
+    cog: input.cog,
     matchMode: match ? 'existing' : 'new',
     sectionFingerprint: match ? match.fingerprint : ''
   };
@@ -607,7 +609,8 @@ function addProduct(payload) {
     confirmation.product !== input.product ||
     confirmation.flavour !== input.flavour ||
     confirmation.barcode !== input.barcode ||
-    confirmation.sku !== input.sku
+    confirmation.sku !== input.sku ||
+    confirmation.cog !== input.cog
   ) {
     throw new Error('Product details changed after review. Review them again before adding.');
   }
@@ -636,6 +639,7 @@ function addProduct(payload) {
       : insertProductInNewSection(sheet, input, session, columns);
     cache.remove(cacheKey);
     cache.remove('product-taxonomy-v2');
+    cache.remove('product-taxonomy-v3');
     SpreadsheetApp.flush();
     logProductAddition(session, result.product, result.mode, result.sectionLabel, result.row);
     return {
@@ -660,6 +664,7 @@ function validateNewProductInput(payload) {
   const flavour = clean(payload.flavour).replace(/\s+/g, ' ');
   const barcode = cleanBarcode(payload.barcode);
   const sku = clean(payload.sku).replace(/[\u200B-\u200D\uFEFF]/g, '');
+  const cog = clean(payload.cog);
   if (!brand) throw new Error('Choose or enter a brand.');
   if (!product) throw new Error('Choose or enter a product.');
   if (!flavour) throw new Error('Enter a flavour or colour.');
@@ -668,7 +673,8 @@ function validateNewProductInput(payload) {
   validateBarcode(barcode);
   if (sku.length > 80) throw new Error('SKU is too long.');
   if (sku && !/^[A-Za-z0-9._\-/]+$/.test(sku)) throw new Error('SKU contains unsupported characters.');
-  return { brand: brand, product: product, flavour: flavour, barcode: barcode, sku: sku };
+  if (cog && !/^\d+(?:\.\d{1,2})?$/.test(cog)) throw new Error('Enter COG as a non-negative amount with up to 2 decimal places.');
+  return { brand: brand, product: product, flavour: flavour, barcode: barcode, sku: sku, cog: cog };
 }
 
 function assertNewProductIsUnique(sheet, input, columns) {
@@ -905,7 +911,7 @@ function writeNewProductValues(sheet, row, input, exemplar, session, columns) {
   const values = new Array(width).fill('');
   values[columns.barcode - 1] = input.barcode;
   values[columns.sku - 1] = input.sku;
-  values[columns.cost - 1] = parseCost(exemplar.cost);
+  values[columns.cost - 1] = input.cog === '' ? parseCost(exemplar.cost) : parseCost(input.cog);
   values[columns.brand - 1] = input.brand;
   values[columns.product - 1] = input.product;
   values[columns.flavour - 1] = input.flavour;

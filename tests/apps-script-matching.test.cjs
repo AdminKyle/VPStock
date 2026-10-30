@@ -48,4 +48,21 @@ assert.equal(key, "pixl|8000 kit|blue magic");
 assert.equal(vm.runInContext("columnToLetter(9)", context), "I");
 assert.equal(vm.runInContext("columnToLetter(19)", context), "S");
 
+context.__newProductPayload = {
+  brand: "Aspire",
+  product: "GOTEK Pro 2",
+  flavour: "Blue",
+  barcode: "5051234567890",
+  sku: "",
+  cog: "4.25"
+};
+const validatedProduct = vm.runInContext("validateNewProductInput(__newProductPayload)", context);
+assert.equal(validatedProduct.cog, "4.25", "reviewed COG is preserved for the sheet write");
+context.__newProductPayload.cog = "4.257";
+assert.throws(
+  () => vm.runInContext("validateNewProductInput(__newProductPayload)", context),
+  /COG.*2 decimal places/,
+  "COG rejects ambiguous precision"
+);
+
 console.log("Apps Script structured product matching tests passed.");

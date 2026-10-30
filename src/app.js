@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=29";
+import { CONFIG } from "./config.js?v=30";
 import { mark, measure } from "./debug.js";
-import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=29";
+import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=30";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=29";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=30";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=29";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=30";
 import {
   els,
   clearFlavourResults,
@@ -21,7 +21,7 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js?v=29";
+} from "./ui.js?v=30";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
@@ -39,6 +39,9 @@ let isAddingProduct = false;
 let productTaxonomy = { brands: [], sections: [] };
 let productTaxonomyPromise = null;
 let productTaxonomyServerFresh = false;
+let pendingUnknownBarcode = "";
+let autofilledCog = "";
+let autofilledCogSection = "";
 const productCatalogOverrides = new Map();
 
 function readCachedProductCatalog() {
@@ -219,11 +222,39 @@ function handleDetectedBarcode(barcode) {
 }
 
 function handleCameraStatus(message) {
+  hideUnknownBarcodeReview();
   setCameraOverlay(message, "neutral", false);
+}
+
+function hideUnknownBarcodeReview() {
+  pendingUnknownBarcode = "";
+  els.unknownBarcodeReview?.classList.add("hidden");
+}
+
+function showUnknownBarcodeReview(barcode) {
+  pendingUnknownBarcode = barcode;
+  els.unknownBarcodeValue.textContent = barcode;
+  els.unknownBarcodeReview.classList.remove("hidden");
+  setCameraOverlay("", "warning", false);
+  els.useUnknownBarcodeButton?.focus();
+}
+
+function rescanUnknownBarcode() {
+  hideUnknownBarcodeReview();
+  resumeCameraScanning("Point the camera at the barcode again.");
+}
+
+function useUnknownBarcode() {
+  const barcode = pendingUnknownBarcode;
+  if (!barcode) return;
+  hideUnknownBarcodeReview();
+  closeCameraScanner();
+  openAddProductModal({ barcode });
 }
 
 function resumeCameraScanning(message = "Point the camera at a barcode.") {
   window.clearTimeout(resumeTimer);
+  hideUnknownBarcodeReview();
   resumeScanner(handleDetectedBarcode, handleCameraStatus);
   setCameraOverlay(message, "neutral", false);
 }
@@ -291,6 +322,7 @@ function closeCameraScanner() {
   setCameraRunning(false);
   setCameraOverlay("Camera stopped", "neutral", false);
   setCameraOpen(false);
+  hideUnknownBarcodeReview();
 }
 
 async function restoreSession() {
@@ -427,6 +459,9 @@ async function handleSubmit(barcodeFromScanner = "") {
       const message = `${error.message} This scan was not queued because the update result may be uncertain. Check stock before scanning it again.`;
       setCameraOverlay("Connection issue. Check stock before retrying.", "warning", true);
       setStatus(message, "warning");
+    } else if (/barcode not found/i.test(error.message || "")) {
+      showUnknownBarcodeReview(barcode);
+      setStatus(`Barcode ${barcode} is not in MASTER_DB. Check it before adding a product.`, "warning");
     } else {
       setCameraOverlay(error.message, "error", true);
       setStatus(error.message, "error");
@@ -577,7 +612,7 @@ function taxonomyFromCatalog(products = []) {
     const flavour = String(item.flavour || "").trim();
     if (!brand || !product || product === "__SEPARATOR__") return;
     const key = `${taxonomyKey(brand)}|${taxonomyKey(product)}`;
-    if (!sectionMap.has(key)) sectionMap.set(key, { brand, product, label: `${brand} · ${product}`, flavours: [] });
+    if (!sectionMap.has(key)) sectionMap.set(key, { brand, product, label: `${brand} · ${product}`, flavours: [], cost: item.cost });
     const section = sectionMap.get(key);
     if (flavour && !section.flavours.includes(flavour)) section.flavours.push(flavour);
   });
@@ -600,9 +635,18 @@ async function loadProductTaxonomy({ force = false } = {}) {
   if (productTaxonomyPromise) return productTaxonomyPromise;
   productTaxonomyPromise = getProductTaxonomy(session)
     .then((result) => {
-      productTaxonomy = { brands: result.brands || [], sections: result.sections || [] };
+      const cachedCosts = new Map(productTaxonomy.sections.map((section) => [
+        `${taxonomyKey(section.brand)}|${taxonomyKey(section.product)}`,
+        section.cost
+      ]));
+      const sections = (result.sections || []).map((section) => ({
+        ...section,
+        cost: section.cost ?? cachedCosts.get(`${taxonomyKey(section.brand)}|${taxonomyKey(section.product)}`)
+      }));
+      productTaxonomy = { brands: result.brands || [], sections };
       productTaxonomyServerFresh = true;
       renderActiveCombobox();
+      prefillMatchedCog();
       return productTaxonomy;
     })
     .finally(() => { productTaxonomyPromise = null; });
@@ -615,6 +659,22 @@ function matchingSection(brand, product) {
   return productTaxonomy.sections.find((section) =>
     taxonomyKey(section.brand) === brandKey && taxonomyKey(section.product) === productKey
   ) || null;
+}
+
+function prefillMatchedCog() {
+  const input = els.newProductCogInput;
+  if (!input) return;
+  const section = matchingSection(els.newProductBrandInput?.value, els.newProductTypeInput?.value);
+  const sectionKey = section ? `${taxonomyKey(section.brand)}|${taxonomyKey(section.product)}` : "";
+  const currentValue = String(input.value || "").trim();
+  const mayReplace = !currentValue || (autofilledCogSection && currentValue === autofilledCog);
+  if (!mayReplace) return;
+
+  const numericCost = Number(String(section?.cost ?? "").replace(/[^0-9.-]/g, ""));
+  const nextValue = section && Number.isFinite(numericCost) && numericCost > 0 ? numericCost.toFixed(2) : "";
+  input.value = nextValue;
+  autofilledCog = nextValue;
+  autofilledCogSection = nextValue ? sectionKey : "";
 }
 
 function comboboxOptions(field) {
@@ -653,9 +713,11 @@ function renderCombobox(field, input, menu) {
       if (field === "brand") {
         els.newProductTypeInput.value = "";
         els.newProductFlavourInput.value = "";
+        prefillMatchedCog();
         els.newProductTypeInput.focus();
       } else if (field === "product") {
         els.newProductFlavourInput.value = "";
+        prefillMatchedCog();
         els.newProductFlavourInput.focus();
       }
     });
@@ -673,6 +735,8 @@ function closeCombobox(input, menu) {
 
 function resetProductForm() {
   pendingProductReview = null;
+  autofilledCog = "";
+  autofilledCogSection = "";
   els.addProductForm?.reset();
   els.addProductFields?.classList.remove("hidden");
   els.addProductReview?.classList.add("hidden");
@@ -690,7 +754,7 @@ function resetProductForm() {
   }
 }
 
-function openAddProductModal() {
+function openAddProductModal({ barcode = "" } = {}) {
   if (!session) {
     showLogin("Please log in before adding a product.");
     return;
@@ -700,6 +764,7 @@ function openAddProductModal() {
     return;
   }
   resetProductForm();
+  if (barcode) els.newProductBarcodeInput.value = barcode;
   setProductModalOpen(true);
   readCachedProductCatalog();
   if (productCatalog.length) {
@@ -737,7 +802,8 @@ function newProductInput() {
     product: String(els.newProductTypeInput?.value || "").trim().replace(/\s+/g, " "),
     flavour: String(els.newProductFlavourInput?.value || "").trim().replace(/\s+/g, " "),
     barcode: cleanBarcode(els.newProductBarcodeInput?.value),
-    sku: String(els.newProductSkuInput?.value || "").trim()
+    sku: String(els.newProductSkuInput?.value || "").trim(),
+    cog: String(els.newProductCogInput?.value || "").trim()
   };
 }
 
@@ -748,6 +814,7 @@ function validateNewProductClient(input) {
   const barcodeError = validateBarcode(input.barcode);
   if (barcodeError) return barcodeError;
   if (input.sku && !/^[A-Za-z0-9._\-/]+$/.test(input.sku)) return "SKU contains unsupported characters.";
+  if (input.cog && !/^\d+(?:\.\d{1,2})?$/.test(input.cog)) return "Enter COG as a non-negative amount with up to 2 decimal places.";
   return "";
 }
 
@@ -766,6 +833,9 @@ function renderProductReview(result, input) {
   els.reviewFlavour.textContent = input.flavour;
   els.reviewBarcode.textContent = input.barcode;
   els.reviewSku.textContent = input.sku || "Not supplied";
+  els.reviewCog.textContent = input.cog
+    ? `£${Number(input.cog).toFixed(2)}`
+    : (result.match ? "Use matched section" : "Not supplied");
   els.matchedSectionSummary.replaceChildren();
 
   if (result.match) {
@@ -905,6 +975,8 @@ function bindEvents() {
   els.retryQueueButton?.addEventListener("click", retryPendingScans);
   els.clearQueueButton?.addEventListener("click", clearRetryQueue);
   els.cameraRetryButton?.addEventListener("click", openCameraScanner);
+  els.rescanUnknownBarcodeButton?.addEventListener("click", rescanUnknownBarcode);
+  els.useUnknownBarcodeButton?.addEventListener("click", useUnknownBarcode);
   els.flavourSearchInput?.addEventListener("input", handleFlavourSearch);
   els.quantitySignButton?.addEventListener("click", toggleQuantitySign);
   els.quantityInput?.addEventListener("input", syncQuantitySignButton);
@@ -919,7 +991,10 @@ function bindEvents() {
     ["flavour", els.newProductFlavourInput, els.flavourSuggestions]
   ].forEach(([field, input, menu]) => {
     input?.addEventListener("focus", () => renderCombobox(field, input, menu));
-    input?.addEventListener("input", () => renderCombobox(field, input, menu));
+    input?.addEventListener("input", () => {
+      renderCombobox(field, input, menu);
+      if (field === "brand" || field === "product") prefillMatchedCog();
+    });
     input?.addEventListener("blur", () => window.setTimeout(() => closeCombobox(input, menu), 100));
   });
 

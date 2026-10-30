@@ -10,7 +10,7 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=29">
+    <link rel="stylesheet" href="./src/styles.css?v=30">
     <script>
       (() => {
         try {
@@ -168,6 +168,15 @@
             <div id="cameraOverlay" class="camera-overlay" data-type="neutral">
               <span id="cameraOverlayText">Starting camera…</span>
               <button id="cameraRetryButton" class="camera-retry-button hidden" type="button">Try again</button>
+              <div id="unknownBarcodeReview" class="unknown-barcode-review hidden" role="alertdialog" aria-labelledby="unknownBarcodeTitle">
+                <span id="unknownBarcodeTitle" class="unknown-barcode-label">Barcode not found</span>
+                <strong id="unknownBarcodeValue" class="unknown-barcode-value"></strong>
+                <span class="unknown-barcode-help">Check every digit against the product before continuing.</span>
+                <div class="unknown-barcode-actions">
+                  <button id="rescanUnknownBarcodeButton" class="camera-retry-button" type="button">Scan again</button>
+                  <button id="useUnknownBarcodeButton" class="camera-confirm-button" type="button">Barcode is correct</button>
+                </div>
+              </div>
             </div>
           </div>
           <footer class="camera-modal-footer">Keep the device steady. Scans submit automatically.</footer>
@@ -209,6 +218,11 @@
                   <span>SKU <small>Optional</small></span>
                   <input id="newProductSkuInput" name="sku" autocomplete="off" maxlength="80">
                 </label>
+                <label class="field">
+                  <span>COG <small>Optional</small></span>
+                  <input id="newProductCogInput" name="cog" autocomplete="off" inputmode="decimal" maxlength="12" placeholder="e.g. 3.70">
+                  <small class="field-hint">Leave blank to use the matched section's COG.</small>
+                </label>
                 <p id="addProductMessage" class="message" role="status" aria-live="polite"></p>
                 <button id="reviewProductButton" class="primary-button" type="submit">Review product</button>
               </div>
@@ -221,6 +235,7 @@
                   <div><dt>Flavour</dt><dd id="reviewFlavour"></dd></div>
                   <div><dt>Barcode</dt><dd id="reviewBarcode"></dd></div>
                   <div><dt>SKU</dt><dd id="reviewSku"></dd></div>
+                  <div><dt>COG</dt><dd id="reviewCog"></dd></div>
                 </dl>
                 <div id="matchedSectionSummary" class="section-match-card"></div>
                 <label id="newSectionConfirmation" class="new-section-confirmation hidden">
@@ -238,6 +253,6 @@
         </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=29"></script>
+    <script type="module" src="./src/app.js?v=30"></script>
   </body>
 </html>

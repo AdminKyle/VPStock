@@ -577,6 +577,13 @@ p {
   font-weight: 600;
 }
 
+.field .field-hint {
+  margin-top: -3px;
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .combobox-field {
   position: relative;
 }
@@ -1239,6 +1246,60 @@ p {
   border-radius: 12px;
   background: rgba(255,255,255,.92);
   color: #07111f;
+  font-weight: 820;
+}
+
+.unknown-barcode-review {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(420px, calc(100vw - 40px));
+  padding: 20px;
+  border: 1px solid rgba(255, 226, 170, .38);
+  border-radius: 22px;
+  background: rgba(31, 25, 18, .88);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
+  backdrop-filter: blur(20px);
+  text-align: center;
+}
+
+.unknown-barcode-label {
+  color: #ffe6b8;
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.unknown-barcode-value {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: clamp(1.25rem, 6vw, 1.85rem);
+  letter-spacing: .05em;
+}
+
+.unknown-barcode-help {
+  color: rgba(255,255,255,.76);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.unknown-barcode-actions {
+  display: grid;
+  grid-template-columns: .85fr 1.15fr;
+  gap: 9px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.camera-confirm-button {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #041a14;
   font-weight: 820;
 }
 

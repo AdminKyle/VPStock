@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=29";
+import { CONFIG } from "./config.js?v=30";
 import { mark, measure } from "./debug.js";
 
 function requireEndpoint() {
@@ -116,7 +116,7 @@ export function updateProductRow({ session, row, target, quantity }) {
   });
 }
 
-export function previewProductAddition({ session, brand, product, flavour, barcode, sku, createNewSection }) {
+export function previewProductAddition({ session, brand, product, flavour, barcode, sku, cog, createNewSection }) {
   return requestJsonp("previewProductAddition", {
     token: session?.token,
     username: session?.username,
@@ -125,11 +125,12 @@ export function previewProductAddition({ session, brand, product, flavour, barco
     flavour,
     barcode,
     sku,
+    cog,
     createNewSection: createNewSection ? "true" : "false"
   });
 }
 
-export function addProduct({ session, brand, product, flavour, barcode, sku, confirmationToken, confirmNewSection }) {
+export function addProduct({ session, brand, product, flavour, barcode, sku, cog, confirmationToken, confirmNewSection }) {
   return requestJsonp("addProduct", {
     token: session?.token,
     username: session?.username,
@@ -138,6 +139,7 @@ export function addProduct({ session, brand, product, flavour, barcode, sku, con
     flavour,
     barcode,
     sku,
+    cog,
     confirmationToken,
     confirmNewSection: confirmNewSection ? "true" : "false"
   });
