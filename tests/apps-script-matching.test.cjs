@@ -78,6 +78,20 @@ const missingDetails = vm.runInContext("validateMissingProductDetails(__missingD
 assert.equal(missingDetails.row, 42);
 assert.equal(missingDetails.expectedKey, "aspire|gotek pro 2|blue");
 assert.equal(missingDetails.sku, "GOTEK-PRO2-BLUE");
+
+context.__columns = { barcode: 1, sku: 2, brand: 4, product: 5, flavour: 6 };
+context.__structureRows = [["5061064441951", "PIXL8000BM20-LBPD", "3.70", "PIXL", "8000 Kit", "Blue Magic"]];
+context.__uniqueInput = { barcode: "5051234567890", sku: "NEW-SKU", brand: "PIXL", product: "8000 Kit", flavour: "Blueberry" };
+assert.doesNotThrow(
+  () => vm.runInContext("assertNewProductIsUnique(null, __uniqueInput, __columns, __structureRows)", context),
+  "one structure snapshot can validate a genuinely new product"
+);
+context.__uniqueInput.barcode = "5061064441951";
+assert.throws(
+  () => vm.runInContext("assertNewProductIsUnique(null, __uniqueInput, __columns, __structureRows)", context),
+  /barcode already exists/,
+  "the combined structure snapshot still blocks duplicate barcodes"
+);
 context.__missingDetailsPayload.sku = "";
 assert.throws(
   () => vm.runInContext("validateMissingProductDetails(__missingDetailsPayload)", context),

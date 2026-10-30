@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=31";
+import { CONFIG } from "./config.js?v=32";
 import { mark, measure } from "./debug.js";
-import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateMissingProductDetails, updateProductRow, validateSession } from "./api.js?v=31";
+import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateMissingProductDetails, updateProductRow, validateSession } from "./api.js?v=32";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=31";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=32";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=31";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=32";
 import {
   els,
   clearFlavourResults,
@@ -21,7 +21,7 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js?v=31";
+} from "./ui.js?v=32";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
@@ -536,6 +536,7 @@ async function handleSubmit(barcodeFromScanner = "") {
   setCameraOverlay(`Submitting ${barcode}...`, "working", false);
   setStatus(`Submitting ${barcode} to ${targetLabel(target)}...`, "working");
   mark("scan-submit:start");
+  const startedAt = performance.now();
 
   try {
     const result = await submitScan({ session, barcode, target, quantity });
@@ -544,7 +545,7 @@ async function handleSubmit(barcodeFromScanner = "") {
     const action = quantity < 0 ? "Deducted" : "Successfully Added";
     updateRecent({ flavour, barcode, target, quantity });
     setCameraOverlay(`${action} ${Math.abs(quantity)} to ${targetLabel(target)}.`, "success", false);
-    setStatus(result.message || `${targetLabel(target)} updated.`, "success");
+    setStatus(`${result.message || `${targetLabel(target)} updated.`} (${((performance.now() - startedAt) / 1000).toFixed(2)}s)`, "success");
     measure("scan-submit:confirmed", "scan-submit:start");
     if (!offerMissingDetails(result.product, { fromScanner: true })) resumeCameraSoon();
   } catch (error) {
@@ -667,11 +668,12 @@ async function handleProductSelect(product) {
   updateRecent({ flavour: productName || product.sku || `Row ${product.row}`, target, quantity });
   setStatus(`Updating ${productName || "selected product"} to ${targetLabel(target)}...`, "working");
   mark("row-update:start");
+  const startedAt = performance.now();
 
   try {
     const result = await updateProductRow({ session, row: product.row, target, quantity });
     updateProductCatalog(result.product);
-    setStatus(result.message || `${targetLabel(target)} updated.`, "success");
+    setStatus(`${result.message || `${targetLabel(target)} updated.`} (${((performance.now() - startedAt) / 1000).toFixed(2)}s)`, "success");
     els.flavourSearchInput.value = "";
     clearFlavourResults();
     measure("row-update:confirmed", "row-update:start");
@@ -863,7 +865,8 @@ function openAddProductModal({ barcode = "" } = {}) {
   readCachedProductCatalog();
   if (productCatalog.length) {
     productTaxonomy = taxonomyFromCatalog(productCatalog);
-    setProductMessage(els.addProductMessage, "Saved product ranges are ready. Refreshing…");
+    setProductMessage(els.addProductMessage);
+    renderActiveCombobox();
   } else {
     setProductMessage(els.addProductMessage, "Loading product ranges…");
   }
@@ -981,9 +984,11 @@ async function handleProductReview(event) {
   els.reviewProductButton.textContent = "Checking MASTER_DB...";
   const createNewSection = !matchingSection(input.brand, input.product);
   setProductMessage(els.addProductMessage, createNewSection ? "Checking the new section and duplicates…" : "Confirming the exact product section…");
+  const startedAt = performance.now();
   try {
     const result = await previewProductAddition({ session, ...input, createNewSection });
     renderProductReview(result, input);
+    setProductMessage(els.addProductReviewMessage, `Checked in ${((performance.now() - startedAt) / 1000).toFixed(2)}s.`);
   } catch (error) {
     setProductMessage(els.addProductMessage, error.message, "error");
   } finally {
@@ -1016,6 +1021,7 @@ async function confirmProductAddition() {
   els.editProductButton.disabled = true;
   els.confirmAddProductButton.textContent = "Adding safely...";
   setProductMessage(els.addProductReviewMessage, "Adding the product without changing existing product rows...");
+  const startedAt = performance.now();
   try {
     const added = await addProduct({
       session,
@@ -1024,12 +1030,13 @@ async function confirmProductAddition() {
       confirmNewSection
     });
     invalidateProductCatalog();
-    await refreshProductCatalog({ force: true });
+    const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(2);
+    refreshProductCatalog({ force: true }).catch(() => {});
     setProductModalOpen(false);
     resetProductForm();
     productTaxonomy = { brands: [], sections: [] };
     productTaxonomyServerFresh = false;
-    setStatus(added.message || `${input.brand} ${input.product} ${input.flavour} was added.`, "success");
+    setStatus(`${added.message || `${input.brand} ${input.product} ${input.flavour} was added.`} (${elapsedSeconds}s)`, "success");
     updateRecent({ flavour: `${input.brand} ${input.product} ${input.flavour}` });
   } catch (error) {
     setProductMessage(els.addProductReviewMessage, error.message, "error");

@@ -39,6 +39,7 @@ const CONFIG = {
   SESSION_HOURS: 12,
   SESSION_CACHE_SECONDS: 1800,
   PRODUCT_CONFIRMATION_SECONDS: 600,
+  STOCK_COLUMNS_CACHE_SECONDS: 21600,
   SCAN_UPDATE_MODE: 'increment', // increment, setQuantity, setTimestamp
   ALLOW_LEGACY_UNAUTHENTICATED_SCANS: false,
   MIN_BARCODE_LENGTH: 4,
@@ -291,9 +292,13 @@ function getValidSession(token, username) {
 }
 
 function getStockColumns(sheet) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'stock-columns-v2';
+  const cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
   const headers = normalizeHeaders(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
   const structured = headers.indexOf('product') >= 0 && headers.indexOf('flavour') >= 0;
-  return {
+  const columns = {
     barcode: findHeader(headers, CONFIG.BARCODE_HEADERS, CONFIG.BARCODE_COLUMN),
     sku: CONFIG.SKU_COLUMN,
     cost: CONFIG.COG_COLUMN,
@@ -308,6 +313,8 @@ function getStockColumns(sheet) {
     category: findHeader(headers, CONFIG.CATEGORY_HEADERS, structured ? CONFIG.CATEGORY_COLUMN : 13),
     structured: structured
   };
+  cache.put(cacheKey, JSON.stringify(columns), CONFIG.STOCK_COLUMNS_CACHE_SECONDS);
+  return columns;
 }
 
 function findBarcodeRow(sheet, barcodeColumn, barcode) {
@@ -553,9 +560,10 @@ function previewProductAddition(payload) {
   const sheet = getStockSheet();
   const columns = getStockColumns(sheet);
   if (!columns.structured) throw new Error('MASTER_DB is still being upgraded. Try again shortly.');
-  assertNewProductIsUnique(sheet, input, columns);
+  const structureRows = readProductStructureRows(sheet, columns);
+  assertNewProductIsUnique(sheet, input, columns, structureRows);
 
-  const sections = buildProductSections(sheet, columns);
+  const sections = buildProductSections(sheet, columns, structureRows);
   const match = findExactProductSection(input.brand, input.product, sections);
   const createNewSection = isTrue(payload.createNewSection);
   if (!match && !createNewSection) {
@@ -622,8 +630,9 @@ function addProduct(payload) {
     const sheet = getStockSheet();
     const columns = getStockColumns(sheet);
     if (!columns.structured) throw new Error('MASTER_DB is still being upgraded. Try again shortly.');
-    assertNewProductIsUnique(sheet, input, columns);
-    const match = findExactProductSection(input.brand, input.product, buildProductSections(sheet, columns));
+    const structureRows = readProductStructureRows(sheet, columns);
+    assertNewProductIsUnique(sheet, input, columns, structureRows);
+    const match = findExactProductSection(input.brand, input.product, buildProductSections(sheet, columns, structureRows));
     const currentMode = match ? 'existing' : 'new';
     if (currentMode !== confirmation.matchMode) {
       throw new Error('The matching section changed. Review the product again before adding.');
@@ -678,31 +687,36 @@ function validateNewProductInput(payload) {
   return { brand: brand, product: product, flavour: flavour, barcode: barcode, sku: sku, cog: cog };
 }
 
-function assertNewProductIsUnique(sheet, input, columns) {
-  if (findValueRow(sheet, CONFIG.BARCODE_COLUMN, input.barcode)) {
-    throw new Error('That barcode already exists in MASTER_DB.');
-  }
-  if (input.sku && findValueRow(sheet, CONFIG.SKU_COLUMN, input.sku)) {
-    throw new Error('That SKU already exists in MASTER_DB.');
-  }
-
+function readProductStructureRows(sheet, columns) {
   const lastDataRow = findLastProductDataRow(sheet, columns);
-  if (lastDataRow < 2) return;
-  const values = sheet.getRange(2, columns.brand, lastDataRow - 1, columns.flavour - columns.brand + 1).getDisplayValues();
+  if (lastDataRow < 2) return [];
+  const width = Math.max(columns.category, columns.flavour, columns.sku, columns.barcode);
+  return sheet.getRange(2, 1, lastDataRow - 1, width).getDisplayValues();
+}
+
+function assertNewProductIsUnique(sheet, input, columns, structureRows) {
+  const rows = structureRows || readProductStructureRows(sheet, columns);
+  const wantedBarcode = cleanBarcode(input.barcode).toLowerCase();
+  const wantedSku = clean(input.sku).toLowerCase();
   const wanted = structuredProductKey(input.brand, input.product, input.flavour);
-  for (let i = 0; i < values.length; i++) {
-    if (structuredProductKey(values[i][0], values[i][columns.product - columns.brand], values[i][columns.flavour - columns.brand]) === wanted) {
+  for (let i = 0; i < rows.length; i++) {
+    const values = rows[i];
+    if (cleanBarcode(values[columns.barcode - 1]).toLowerCase() === wantedBarcode) {
+      throw new Error('That barcode already exists in MASTER_DB.');
+    }
+    if (wantedSku && clean(values[columns.sku - 1]).toLowerCase() === wantedSku) {
+      throw new Error('That SKU already exists in MASTER_DB.');
+    }
+    if (structuredProductKey(values[columns.brand - 1], values[columns.product - 1], values[columns.flavour - 1]) === wanted) {
       throw new Error('That Brand + Product + Flavour already exists in MASTER_DB.');
     }
   }
 }
 
-function buildProductSections(sheet, columns) {
+function buildProductSections(sheet, columns, structureRows) {
   columns = columns || getStockColumns(sheet);
-  const lastDataRow = findLastProductDataRow(sheet, columns);
-  if (lastDataRow < 2) return [];
-  const width = Math.max(columns.category, columns.flavour);
-  const rows = sheet.getRange(2, 1, lastDataRow - 1, width).getDisplayValues();
+  const rows = structureRows || readProductStructureRows(sheet, columns);
+  if (!rows.length) return [];
   const sections = [];
   let current = null;
 
