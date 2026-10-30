@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=30";
+import { CONFIG } from "./config.js?v=31";
 import { mark, measure } from "./debug.js";
-import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=30";
+import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateMissingProductDetails, updateProductRow, validateSession } from "./api.js?v=31";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=30";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=31";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=30";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=31";
 import {
   els,
   clearFlavourResults,
@@ -21,7 +21,7 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js?v=30";
+} from "./ui.js?v=31";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
@@ -42,6 +42,8 @@ let productTaxonomyServerFresh = false;
 let pendingUnknownBarcode = "";
 let autofilledCog = "";
 let autofilledCogSection = "";
+let pendingMissingDetails = null;
+let isSavingMissingDetails = false;
 const productCatalogOverrides = new Map();
 
 function readCachedProductCatalog() {
@@ -171,6 +173,97 @@ function validateBarcode(barcode) {
   if (barcode.length > CONFIG.MAX_BARCODE_LENGTH) return "Barcode is too long.";
   if (!/^[A-Za-z0-9._-]+$/.test(barcode)) return "Barcode contains unsupported characters.";
   return "";
+}
+
+function missingDetailNames(product = {}) {
+  const missing = [];
+  if (!cleanBarcode(product.barcode)) missing.push("barcode");
+  if (!String(product.sku || "").trim()) missing.push("sku");
+  if (!(Number(product.cost) > 0)) missing.push("cog");
+  return missing;
+}
+
+function setMissingDetailsOpen(isOpen) {
+  els.missingDetailsModal?.classList.toggle("hidden", !isOpen);
+  document.body.classList.toggle("product-modal-open", isOpen || !els.addProductModal?.classList.contains("hidden"));
+}
+
+function offerMissingDetails(product, { fromScanner = false } = {}) {
+  const missing = missingDetailNames(product);
+  if (!product?.row || !missing.length) return false;
+  if (fromScanner) closeCameraScanner();
+  pendingMissingDetails = { product, missing };
+  els.missingDetailsForm?.reset();
+  els.missingDetailsProduct.textContent = formatProductName(product);
+  els.missingBarcodeField.classList.toggle("hidden", !missing.includes("barcode"));
+  els.missingSkuField.classList.toggle("hidden", !missing.includes("sku"));
+  els.missingCogField.classList.toggle("hidden", !missing.includes("cog"));
+  setProductMessage(els.missingDetailsMessage);
+  setMissingDetailsOpen(true);
+  window.setTimeout(() => {
+    const firstInput = [els.missingBarcodeInput, els.missingSkuInput, els.missingCogInput]
+      .find((input) => input && !input.closest(".field")?.classList.contains("hidden"));
+    firstInput?.focus();
+  }, 40);
+  return true;
+}
+
+function closeMissingDetails() {
+  if (isSavingMissingDetails) return;
+  pendingMissingDetails = null;
+  setMissingDetailsOpen(false);
+  els.missingDetailsForm?.reset();
+  els.startCameraButton?.focus();
+}
+
+async function saveMissingDetails(event) {
+  event.preventDefault();
+  if (isSavingMissingDetails || !pendingMissingDetails) return;
+  const { product, missing } = pendingMissingDetails;
+  const barcode = missing.includes("barcode") ? cleanBarcode(els.missingBarcodeInput.value) : "";
+  const sku = missing.includes("sku") ? String(els.missingSkuInput.value || "").trim() : "";
+  const cog = missing.includes("cog") ? String(els.missingCogInput.value || "").trim() : "";
+  if (!barcode && !sku && !cog) {
+    setProductMessage(els.missingDetailsMessage, "Enter at least one missing detail, or choose Not now.", "error");
+    return;
+  }
+  if (barcode) {
+    const barcodeError = validateBarcode(barcode);
+    if (barcodeError) return setProductMessage(els.missingDetailsMessage, barcodeError, "error");
+  }
+  if (sku && !/^[A-Za-z0-9._\-/]+$/.test(sku)) return setProductMessage(els.missingDetailsMessage, "SKU contains unsupported characters.", "error");
+  if (cog && (!/^\d+(?:\.\d{1,2})?$/.test(cog) || !(Number(cog) > 0))) {
+    return setProductMessage(els.missingDetailsMessage, "Enter COG above 0 with up to 2 decimal places.", "error");
+  }
+
+  isSavingMissingDetails = true;
+  els.saveMissingDetailsButton.disabled = true;
+  els.skipMissingDetailsButton.disabled = true;
+  els.saveMissingDetailsButton.textContent = "Saving details...";
+  setProductMessage(els.missingDetailsMessage, "Quantity is already safe. Saving product details only...");
+  try {
+    const result = await updateMissingProductDetails({
+      session,
+      row: product.row,
+      brand: product.brand,
+      product: product.product || product.productType,
+      flavour: product.flavour,
+      barcode,
+      sku,
+      cog
+    });
+    updateProductCatalog(result.product);
+    pendingMissingDetails = null;
+    setMissingDetailsOpen(false);
+    setStatus(result.message || "Product details updated. Quantity was unchanged.", "success");
+  } catch (error) {
+    setProductMessage(els.missingDetailsMessage, `${error.message} The quantity update is still saved.`, "error");
+  } finally {
+    isSavingMissingDetails = false;
+    els.saveMissingDetailsButton.disabled = false;
+    els.skipMissingDetailsButton.disabled = false;
+    els.saveMissingDetailsButton.textContent = "Save details";
+  }
 }
 
 function readQuantity() {
@@ -453,7 +546,7 @@ async function handleSubmit(barcodeFromScanner = "") {
     setCameraOverlay(`${action} ${Math.abs(quantity)} to ${targetLabel(target)}.`, "success", false);
     setStatus(result.message || `${targetLabel(target)} updated.`, "success");
     measure("scan-submit:confirmed", "scan-submit:start");
-    resumeCameraSoon();
+    if (!offerMissingDetails(result.product, { fromScanner: true })) resumeCameraSoon();
   } catch (error) {
     if (error.retryable) {
       const message = `${error.message} This scan was not queued because the update result may be uncertain. Check stock before scanning it again.`;
@@ -582,6 +675,7 @@ async function handleProductSelect(product) {
     els.flavourSearchInput.value = "";
     clearFlavourResults();
     measure("row-update:confirmed", "row-update:start");
+    offerMissingDetails(result.product);
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -964,6 +1058,8 @@ function bindEvents() {
     setCameraRunning(false);
     setCameraOpen(false);
     setProductModalOpen(false);
+    setMissingDetailsOpen(false);
+    pendingMissingDetails = null;
     resetProductForm();
     showLogin("Logged out.");
   });
@@ -985,6 +1081,9 @@ function bindEvents() {
   els.addProductForm?.addEventListener("submit", handleProductReview);
   els.editProductButton?.addEventListener("click", editProductDetails);
   els.confirmAddProductButton?.addEventListener("click", confirmProductAddition);
+  els.missingDetailsForm?.addEventListener("submit", saveMissingDetails);
+  els.closeMissingDetailsButton?.addEventListener("click", closeMissingDetails);
+  els.skipMissingDetailsButton?.addEventListener("click", closeMissingDetails);
   [
     ["brand", els.newProductBrandInput, els.brandSuggestions],
     ["product", els.newProductTypeInput, els.productSuggestions],
@@ -1002,7 +1101,8 @@ function bindEvents() {
   window.addEventListener("offline", () => setStatus("Offline. The app opens, but scans cannot be submitted.", "warning"));
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (!els.addProductModal.classList.contains("hidden")) closeAddProductModal();
+    if (!els.missingDetailsModal.classList.contains("hidden")) closeMissingDetails();
+    else if (!els.addProductModal.classList.contains("hidden")) closeAddProductModal();
     else if (!els.cameraModal.classList.contains("hidden")) closeCameraScanner();
   });
 }

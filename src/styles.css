@@ -564,6 +564,34 @@ p {
   padding: 2px;
 }
 
+.missing-details-card {
+  width: min(500px, calc(100vw - 24px));
+}
+
+.missing-details-form {
+  padding: 20px;
+}
+
+.completion-success {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border: 1px solid rgba(94, 228, 159, .38);
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+
+.missing-details-product {
+  margin: -5px 0 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 780;
+}
+
 .product-form-help,
 .review-intro {
   margin: 0;

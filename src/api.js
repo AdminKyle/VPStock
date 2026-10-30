@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=30";
+import { CONFIG } from "./config.js?v=31";
 import { mark, measure } from "./debug.js";
 
 function requireEndpoint() {
@@ -113,6 +113,20 @@ export function updateProductRow({ session, row, target, quantity }) {
     quantity,
     qty: quantity,
     timestamp: new Date().toISOString()
+  });
+}
+
+export function updateMissingProductDetails({ session, row, brand, product, flavour, barcode, sku, cog }) {
+  return requestJsonp("updateMissingProductDetails", {
+    token: session?.token,
+    username: session?.username,
+    row,
+    brand,
+    product,
+    flavour,
+    barcode,
+    sku,
+    cog
   });
 }
 

@@ -63,7 +63,20 @@ export const els = {
   confirmNewSectionInput: document.querySelector("#confirmNewSectionInput"),
   addProductReviewMessage: document.querySelector("#addProductReviewMessage"),
   editProductButton: document.querySelector("#editProductButton"),
-  confirmAddProductButton: document.querySelector("#confirmAddProductButton")
+  confirmAddProductButton: document.querySelector("#confirmAddProductButton"),
+  missingDetailsModal: document.querySelector("#missingDetailsModal"),
+  missingDetailsForm: document.querySelector("#missingDetailsForm"),
+  missingDetailsProduct: document.querySelector("#missingDetailsProduct"),
+  missingBarcodeField: document.querySelector("#missingBarcodeField"),
+  missingBarcodeInput: document.querySelector("#missingBarcodeInput"),
+  missingSkuField: document.querySelector("#missingSkuField"),
+  missingSkuInput: document.querySelector("#missingSkuInput"),
+  missingCogField: document.querySelector("#missingCogField"),
+  missingCogInput: document.querySelector("#missingCogInput"),
+  missingDetailsMessage: document.querySelector("#missingDetailsMessage"),
+  closeMissingDetailsButton: document.querySelector("#closeMissingDetailsButton"),
+  skipMissingDetailsButton: document.querySelector("#skipMissingDetailsButton"),
+  saveMissingDetailsButton: document.querySelector("#saveMissingDetailsButton")
 };
 
 export function showLogin(message = "") {

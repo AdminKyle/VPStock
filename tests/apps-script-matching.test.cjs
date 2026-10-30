@@ -65,4 +65,24 @@ assert.throws(
   "COG rejects ambiguous precision"
 );
 
+context.__missingDetailsPayload = {
+  row: 42,
+  brand: "Aspire",
+  product: "GOTEK Pro 2",
+  flavour: "Blue",
+  barcode: "",
+  sku: "GOTEK-PRO2-BLUE",
+  cog: ""
+};
+const missingDetails = vm.runInContext("validateMissingProductDetails(__missingDetailsPayload)", context);
+assert.equal(missingDetails.row, 42);
+assert.equal(missingDetails.expectedKey, "aspire|gotek pro 2|blue");
+assert.equal(missingDetails.sku, "GOTEK-PRO2-BLUE");
+context.__missingDetailsPayload.sku = "";
+assert.throws(
+  () => vm.runInContext("validateMissingProductDetails(__missingDetailsPayload)", context),
+  /at least one missing product detail/,
+  "metadata reminder cannot submit an empty update"
+);
+
 console.log("Apps Script structured product matching tests passed.");

@@ -10,7 +10,7 @@
     <title>Stock Scanner</title>
     <link rel="manifest" href="./public/manifest.webmanifest">
     <link rel="apple-touch-icon" href="./public/icons/icon.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=30">
+    <link rel="stylesheet" href="./src/styles.css?v=31">
     <script>
       (() => {
         try {
@@ -251,8 +251,42 @@
             </form>
           </div>
         </section>
+
+        <section id="missingDetailsModal" class="product-modal hidden" role="dialog" aria-modal="true" aria-labelledby="missingDetailsTitle">
+          <div class="product-modal-card missing-details-card">
+            <header class="product-modal-header">
+              <div>
+                <p class="section-label">Quantity updated</p>
+                <h2 id="missingDetailsTitle">Complete product details</h2>
+              </div>
+              <button id="closeMissingDetailsButton" class="modal-close-button" type="button" aria-label="Dismiss missing product details">×</button>
+            </header>
+            <form id="missingDetailsForm" class="form-stack missing-details-form">
+              <div class="completion-success" aria-hidden="true">✓</div>
+              <p id="missingDetailsProduct" class="missing-details-product"></p>
+              <p class="product-form-help">The stock quantity has already been saved. Add any available missing details below, or choose Not now.</p>
+              <label id="missingBarcodeField" class="field hidden">
+                <span>Barcode</span>
+                <input id="missingBarcodeInput" autocomplete="off" inputmode="text" maxlength="48">
+              </label>
+              <label id="missingSkuField" class="field hidden">
+                <span>SKU</span>
+                <input id="missingSkuInput" autocomplete="off" maxlength="80">
+              </label>
+              <label id="missingCogField" class="field hidden">
+                <span>COG</span>
+                <input id="missingCogInput" autocomplete="off" inputmode="decimal" maxlength="12" placeholder="e.g. 3.70">
+              </label>
+              <p id="missingDetailsMessage" class="message" role="status" aria-live="polite"></p>
+              <div class="review-actions">
+                <button id="skipMissingDetailsButton" class="secondary-button" type="button">Not now</button>
+                <button id="saveMissingDetailsButton" class="primary-button" type="submit">Save details</button>
+              </div>
+            </form>
+          </div>
+        </section>
       </section>
     </div>
-    <script type="module" src="./src/app.js?v=30"></script>
+    <script type="module" src="./src/app.js?v=31"></script>
   </body>
 </html>

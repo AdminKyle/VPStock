@@ -80,6 +80,7 @@ function routeRequest(payload) {
     if (action === 'addProduct') return addProduct(payload);
     if (action === 'scanBarcode') return scanBarcodeLegacy(payload);
     if (action === 'updateByRow') return updateByRowLegacy(payload);
+    if (action === 'updateMissingProductDetails') return updateMissingProductDetails(payload);
     return { ok: false, error: 'Unknown action.' };
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
@@ -1041,6 +1042,77 @@ function updateByRowLegacy(payload) {
     SpreadsheetApp.flush();
     lock.releaseLock();
   }
+}
+
+function updateMissingProductDetails(payload) {
+  const session = authorizeScan(payload);
+  const input = validateMissingProductDetails(payload);
+  const row = input.row;
+  const expectedKey = input.expectedKey;
+  const barcode = input.barcode;
+  const sku = input.sku;
+  const cog = input.cog;
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getStockSheet();
+    const columns = getStockColumns(sheet);
+    const current = getProductFromRow(sheet, row);
+    if (structuredProductKey(current.brand, current.productType, current.flavour) !== expectedKey) {
+      throw new Error('This product row changed. Refresh and try again.');
+    }
+    if (barcode) {
+      if (current.barcode) throw new Error('Barcode is no longer missing.');
+      const existingBarcodeRow = findProductRow(sheet, columns, barcode);
+      if (existingBarcodeRow && existingBarcodeRow !== row) throw new Error('That barcode already exists in MASTER_DB.');
+    }
+    if (sku) {
+      if (current.sku) throw new Error('SKU is no longer missing.');
+      const existingSkuRow = findProductRow(sheet, columns, sku);
+      if (existingSkuRow && existingSkuRow !== row) throw new Error('That SKU already exists in MASTER_DB.');
+    }
+    if (cog) {
+      if (Number(current.cost) > 0) throw new Error('COG is no longer missing.');
+    }
+    sheet.getRange(row, CONFIG.BARCODE_COLUMN, 1, CONFIG.COG_COLUMN - CONFIG.BARCODE_COLUMN + 1)
+      .setValues([[
+        barcode || current.barcode,
+        sku || current.sku,
+        cog ? parseCost(cog) : current.cost
+      ]]);
+    sheet.getRange(row, CONFIG.BARCODE_COLUMN, 1, 2).setNumberFormat('@');
+    SpreadsheetApp.flush();
+    const updated = getProductFromRow(sheet, row);
+    return {
+      ok: true,
+      success: true,
+      message: 'Product details updated. Quantity was unchanged.',
+      product: updated,
+      updatedBy: session.displayName || session.username || ''
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function validateMissingProductDetails(payload) {
+  const row = Number(payload.row || 0);
+  const barcode = cleanBarcode(payload.barcode);
+  const sku = clean(payload.sku).replace(/[\u200B-\u200D\uFEFF]/g, '');
+  const cog = clean(payload.cog);
+  if (!row || row < 2) throw new Error('Invalid product row.');
+  if (!barcode && !sku && !cog) throw new Error('Enter at least one missing product detail.');
+  if (barcode) validateBarcode(barcode);
+  if (sku.length > 80 || (sku && !/^[A-Za-z0-9._\-/]+$/.test(sku))) throw new Error('SKU contains unsupported characters.');
+  if (cog && (!/^\d+(?:\.\d{1,2})?$/.test(cog) || !(Number(cog) > 0))) throw new Error('Enter COG above 0 with up to 2 decimal places.');
+  return {
+    row: row,
+    expectedKey: structuredProductKey(payload.brand, payload.product, payload.flavour),
+    barcode: barcode,
+    sku: sku,
+    cog: cog
+  };
 }
 
 function logScan(session, barcode, target, quantity, ok, message) {
