@@ -3,7 +3,7 @@ export const CONFIG = {
   SESSION_STORAGE_KEY: "stock-scanner-session",
   PENDING_QUEUE_KEY: "stock-scanner-pending-scans",
   PENDING_QUEUE_VERSION: 3,
-  PRODUCT_CATALOG_CACHE_KEY: "stock-scanner-product-catalog-v1",
+  PRODUCT_CATALOG_CACHE_KEY: "stock-scanner-product-catalog-v2",
   PRODUCT_CATALOG_TTL_MS: 5 * 60 * 1000,
   DUPLICATE_WINDOW_MS: 1400,
   REQUEST_TIMEOUT_MS: 40000,

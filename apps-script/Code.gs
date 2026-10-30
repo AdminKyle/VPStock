@@ -559,9 +559,8 @@ function previewProductAddition(payload) {
   if (!match && !createNewSection) {
     throw new Error('No exact Brand + Product section exists. Check the selections or choose Create new section.');
   }
-  if (match && createNewSection) {
-    throw new Error('That Brand + Product section already exists. Select it instead of creating a duplicate section.');
-  }
+  // The server is authoritative. If the client taxonomy was still loading but an
+  // exact section exists, safely use that section instead of treating it as new.
   const confirmationToken = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
   const confirmation = {
     username: session.username,

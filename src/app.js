@@ -1,10 +1,10 @@
-import { CONFIG } from "./config.js?v=28";
+import { CONFIG } from "./config.js?v=29";
 import { mark, measure } from "./debug.js";
-import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=28";
+import { addProduct, getAllProducts, getProductTaxonomy, login, previewProductAddition, submitScan, updateProductRow, validateSession } from "./api.js?v=29";
 import { clearSession, isExpired, loadSession, saveSession } from "./auth.js";
-import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=28";
+import { filterProducts, formatProductName, prepareProducts } from "./catalog.js?v=29";
 import { clearPendingScans, loadPendingScans, migratePendingQueue, queueScan, removePendingScan } from "./queue.js";
-import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=28";
+import { pauseScanner, preloadScannerLibrary, refocusScanner, resumeScanner, startScanner, stopScanner } from "./scanner.js?v=29";
 import {
   els,
   clearFlavourResults,
@@ -21,7 +21,7 @@ import {
   showLogin,
   showScanner,
   updateRecent
-} from "./ui.js?v=28";
+} from "./ui.js?v=29";
 
 let session = null;
 let lastScan = { barcode: "", at: 0 };
@@ -38,6 +38,7 @@ let pendingProductReview = null;
 let isAddingProduct = false;
 let productTaxonomy = { brands: [], sections: [] };
 let productTaxonomyPromise = null;
+let productTaxonomyServerFresh = false;
 const productCatalogOverrides = new Map();
 
 function readCachedProductCatalog() {
@@ -568,12 +569,40 @@ function taxonomyKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+function taxonomyFromCatalog(products = []) {
+  const sectionMap = new Map();
+  products.forEach((item) => {
+    const brand = String(item.brand || "").trim();
+    const product = String(item.product || item.productType || "").trim();
+    const flavour = String(item.flavour || "").trim();
+    if (!brand || !product || product === "__SEPARATOR__") return;
+    const key = `${taxonomyKey(brand)}|${taxonomyKey(product)}`;
+    if (!sectionMap.has(key)) sectionMap.set(key, { brand, product, label: `${brand} · ${product}`, flavours: [] });
+    const section = sectionMap.get(key);
+    if (flavour && !section.flavours.includes(flavour)) section.flavours.push(flavour);
+  });
+  const sections = [...sectionMap.values()];
+  return {
+    brands: [...new Set(sections.map((section) => section.brand))].sort((a, b) => a.localeCompare(b)),
+    sections
+  };
+}
+
+function renderActiveCombobox() {
+  const active = document.activeElement;
+  if (active === els.newProductBrandInput) renderCombobox("brand", active, els.brandSuggestions);
+  else if (active === els.newProductTypeInput) renderCombobox("product", active, els.productSuggestions);
+  else if (active === els.newProductFlavourInput) renderCombobox("flavour", active, els.flavourSuggestions);
+}
+
 async function loadProductTaxonomy({ force = false } = {}) {
-  if (!force && productTaxonomy.sections.length) return productTaxonomy;
+  if (!force && productTaxonomyServerFresh) return productTaxonomy;
   if (productTaxonomyPromise) return productTaxonomyPromise;
   productTaxonomyPromise = getProductTaxonomy(session)
     .then((result) => {
       productTaxonomy = { brands: result.brands || [], sections: result.sections || [] };
+      productTaxonomyServerFresh = true;
+      renderActiveCombobox();
       return productTaxonomy;
     })
     .finally(() => { productTaxonomyPromise = null; });
@@ -592,10 +621,16 @@ function comboboxOptions(field) {
   const brand = String(els.newProductBrandInput?.value || "").trim();
   const product = String(els.newProductTypeInput?.value || "").trim();
   if (field === "brand") return productTaxonomy.brands;
+  const brandQuery = taxonomyKey(brand);
+  const matchingBrandSections = productTaxonomy.sections
+    .filter((section) => !brandQuery || taxonomyKey(section.brand).includes(brandQuery));
   if (field === "product") return productTaxonomy.sections
-    .filter((section) => !brand || taxonomyKey(section.brand) === taxonomyKey(brand))
+    .filter((section) => !brandQuery || taxonomyKey(section.brand).includes(brandQuery))
     .map((section) => section.product);
-  return matchingSection(brand, product)?.flavours || [];
+  const productQuery = taxonomyKey(product);
+  return matchingBrandSections
+    .filter((section) => !productQuery || taxonomyKey(section.product).includes(productQuery))
+    .flatMap((section) => section.flavours || []);
 }
 
 function renderCombobox(field, input, menu) {
@@ -630,8 +665,10 @@ function renderCombobox(field, input, menu) {
   input.setAttribute("aria-expanded", String(values.length > 0));
 }
 
-function closeComboboxes() {
-  [els.brandSuggestions, els.productSuggestions, els.flavourSuggestions].forEach((menu) => menu?.classList.add("hidden"));
+function closeCombobox(input, menu) {
+  if (document.activeElement === input || menu?.contains(document.activeElement)) return;
+  menu?.classList.add("hidden");
+  input?.setAttribute("aria-expanded", "false");
 }
 
 function resetProductForm() {
@@ -664,10 +701,26 @@ function openAddProductModal() {
   }
   resetProductForm();
   setProductModalOpen(true);
-  setProductMessage(els.addProductMessage, "Loading product ranges…");
+  readCachedProductCatalog();
+  if (productCatalog.length) {
+    productTaxonomy = taxonomyFromCatalog(productCatalog);
+    setProductMessage(els.addProductMessage, "Saved product ranges are ready. Refreshing…");
+  } else {
+    setProductMessage(els.addProductMessage, "Loading product ranges…");
+  }
   loadProductTaxonomy()
-    .then(() => setProductMessage(els.addProductMessage))
-    .catch((error) => setProductMessage(els.addProductMessage, error.message, "error"));
+    .then(() => {
+      setProductMessage(els.addProductMessage);
+      renderActiveCombobox();
+    })
+    .catch((error) => {
+      if (productTaxonomy.sections.length) {
+        setProductMessage(els.addProductMessage, "Using saved product ranges. Live refresh will retry next time.");
+        renderActiveCombobox();
+      } else {
+        setProductMessage(els.addProductMessage, error.message, "error");
+      }
+    });
   window.setTimeout(() => els.newProductBrandInput?.focus(), 40);
 }
 
@@ -811,6 +864,7 @@ async function confirmProductAddition() {
     setProductModalOpen(false);
     resetProductForm();
     productTaxonomy = { brands: [], sections: [] };
+    productTaxonomyServerFresh = false;
     setStatus(added.message || `${input.brand} ${input.product} ${input.flavour} was added.`, "success");
     updateRecent({ flavour: `${input.brand} ${input.product} ${input.flavour}` });
   } catch (error) {
@@ -866,7 +920,7 @@ function bindEvents() {
   ].forEach(([field, input, menu]) => {
     input?.addEventListener("focus", () => renderCombobox(field, input, menu));
     input?.addEventListener("input", () => renderCombobox(field, input, menu));
-    input?.addEventListener("blur", () => window.setTimeout(closeComboboxes, 100));
+    input?.addEventListener("blur", () => window.setTimeout(() => closeCombobox(input, menu), 100));
   });
 
   window.addEventListener("online", () => setStatus("Back online. Ready to submit scans.", "success"));
